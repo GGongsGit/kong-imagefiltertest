@@ -737,8 +737,8 @@ const TAXONOMY = [
     ['FAST', 'cv2.FastFeatureDetector_create', '고속 코너 검출'],
     ['ORB', 'cv2.ORB_create', '회전/스케일 불변 특징'],
     ['SIFT', 'cv2.SIFT_create', '고정밀 특징'],
-    ['SURF', 'cv2.xfeatures2d.SURF_create', 'Contrib(환경 의존)'],
-    ['BRIEF', 'cv2.xfeatures2d.BriefDescriptorExtractor_create', 'Contrib(경량 디스크립터)'],
+    ['SURF', 'cv2.xfeatures2d.SURF_create', 'Contrib(환경 의존) · 브라우저에선 SIFT로 대체'],
+    ['BRIEF', 'cv2.xfeatures2d.BriefDescriptorExtractor_create', 'Contrib(경량 디스크립터) · 브라우저에선 ORB로 대체'],
   ]],
   [7, 'Shape & Line Detection', [
     ['Contours', 'cv2.findContours / cv2.drawContours', '객체 외곽선'],
@@ -1040,23 +1040,33 @@ kps = fast.detect(gray, None)
 out = cv2.drawKeypoints(img, kps, None, flags=cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
 show_result(out)
 `),
-  'SURF': S(CV, true, `if not hasattr(cv2, "xfeatures2d"):
-    raise RuntimeError("cv2.xfeatures2d가 없습니다. opencv-contrib-python 설치가 필요합니다.")
-
-surf = cv2.xfeatures2d.SURF_create(hessianThreshold=400)
-kps, des = surf.detectAndCompute(img, None)
+  'SURF': S(CV, true, `try:
+    # SURF는 opencv-contrib-python(+NONFREE 빌드)에서만 사용 가능
+    surf = cv2.xfeatures2d.SURF_create(hessianThreshold=400)
+    kps, des = surf.detectAndCompute(img, None)
+except (AttributeError, cv2.error):
+    # 브라우저(OpenCV 기본판)에는 contrib 모듈이 없음 → 같은 계열(스케일 불변 특징점)인 SIFT로 대체
+    print("SURF 사용 불가 → SIFT로 대체 실행")
+    sift = cv2.SIFT_create()
+    kps, des = sift.detectAndCompute(img, None)
 
 out = cv2.drawKeypoints(img, kps, None, flags=cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
 show_result(out)
 `),
-  'BRIEF': S(CV, true, `if not hasattr(cv2, "xfeatures2d"):
-    raise RuntimeError("cv2.xfeatures2d가 없습니다. opencv-contrib-python 설치가 필요합니다.")
-
-star = cv2.xfeatures2d.StarDetector_create()
-kps = star.detect(img, None)
-
-brief = cv2.xfeatures2d.BriefDescriptorExtractor_create()
-kps, des = brief.compute(img, kps)
+  'BRIEF': S(CV, true, `try:
+    # BRIEF는 opencv-contrib-python에서만 사용 가능
+    star = cv2.xfeatures2d.StarDetector_create()
+    kps = star.detect(img, None)
+    brief = cv2.xfeatures2d.BriefDescriptorExtractor_create()
+    kps, des = brief.compute(img, kps)
+except (AttributeError, cv2.error):
+    # 브라우저(OpenCV 기본판)에는 contrib 모듈이 없음
+    # → FAST 코너 검출 + ORB 디스크립터(ORB는 회전 보정된 BRIEF = rBRIEF)로 대체
+    print("BRIEF 사용 불가 → FAST + ORB(rBRIEF)로 대체 실행")
+    fast = cv2.FastFeatureDetector_create(threshold=20)
+    kps = fast.detect(img, None)
+    orb = cv2.ORB_create()
+    kps, des = orb.compute(img, kps)
 
 out = cv2.drawKeypoints(img, kps, None, flags=cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
 show_result(out)
@@ -1260,10 +1270,12 @@ async function handle(m) {
       py.FS.writeFile(m.path, m.bytes);
       break;
     case 'snippet': {
-      const env = py.globals.get('_make_env')();
+      const env = py.globals.get('_make_env')(), lines = [];
+      py.setStdout({ batched: s => lines.push(s) }); // print() 출력을 화면에 보여주기 위해 수집
       try { await py.runPythonAsync(m.code, { globals: env }); }
-      finally { env.destroy(); }
+      finally { env.destroy(); py.setStdout(); }
       r.image = takeResult();
+      r.stdout = lines.join('\n');
       break;
     }
     case 'chain':
@@ -1503,13 +1515,14 @@ async function runSnippetOnce() {
     // 샘플 이미지가 아직 없으면 기본 경로(/data/sample.png)에 만들어 둠
     if (!CURRENT_IMAGE_PATH && !virtualFiles.has('/data/sample.png'))
       writeVirtualFile('/data/sample.png', new Uint8Array(await (await makeSampleImage()).arrayBuffer()));
-    const { image: res, ms } = await pyCall('snippet', { code });
+    const { image: res, ms, stdout } = await pyCall('snippet', { code });
+    const printed = stdout ? '\n출력: ' + stdout : '';
     if (res) {
       drawImageData($('cvPreview'), $('emptyPreview'), res);
       $('resInfo').textContent = `${res.width}×${res.height}`;
-      setRunMsg(`실행 완료 · ${res.width}×${res.height} · ${ms.toFixed(0)} ms`, 'ok');
+      setRunMsg(`실행 완료 · ${res.width}×${res.height} · ${ms.toFixed(0)} ms${printed}`, 'ok');
     } else {
-      setRunMsg('실행 완료 (show_result()가 호출되지 않아 표시할 결과가 없습니다)', 'ok');
+      setRunMsg('실행 완료 (show_result()가 호출되지 않아 표시할 결과가 없습니다)' + printed, 'ok');
     }
   } catch (e) {
     if (e.stopped) return;
