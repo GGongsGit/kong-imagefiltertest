@@ -1,0 +1,2238 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>이미지 필터 테스트</title>
+<style>
+  :root {
+    --bg: #f0f0f0; --panel: #ffffff; --border: #c9cdd3; --border-soft: #dde0e4; --text: #1f2328; --muted: #6b7280;
+    --accent: #0a64d6; --accent-text: #ffffff; --row-hover: #eaf2fd; --head: #f6f7f8;
+    --view: #e9eaec; --code-bg: #ffffff; --code-text: #1f2328; --danger: #c62828; --ok: #2e7d32;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #17181b; --panel: #222327; --border: #3a3d44; --border-soft: #2e3036; --text: #e6e7ea; --muted: #9aa0aa;
+      --accent: #3d8bff; --accent-text: #ffffff; --row-hover: #263552; --head: #2a2c31;
+      --view: #1b1c1f; --code-bg: #1b1c1f; --code-text: #e6e7ea; --danger: #ff6b6b; --ok: #66bb6a;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #17181b; --panel: #222327; --border: #3a3d44; --border-soft: #2e3036; --text: #e6e7ea; --muted: #9aa0aa;
+    --accent: #3d8bff; --accent-text: #ffffff; --row-hover: #263552; --head: #2a2c31;
+    --view: #1b1c1f; --code-bg: #1b1c1f; --code-text: #e6e7ea; --danger: #ff6b6b; --ok: #66bb6a;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    background: var(--bg); color: var(--text);
+    font: 13px/1.45 "Malgun Gothic", "Apple SD Gothic Neo", system-ui, sans-serif;
+    display: grid; grid-template-rows: auto 1fr; overflow: hidden;
+  }
+  button, input, textarea { font: inherit; color: inherit; }
+  button {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 4px;
+    padding: 4px 12px; cursor: pointer; white-space: nowrap;
+  }
+  button:hover:not(:disabled) { border-color: var(--accent); }
+  button:disabled { opacity: .5; cursor: default; }
+  button.primary { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .muted { color: var(--muted); }
+
+  /* ── 탭 ── */
+  .tabbar { display: flex; align-items: flex-end; gap: 2px; padding: 4px 8px 0; border-bottom: 1px solid var(--border); background: var(--bg); }
+  .tabbar [role=tab] {
+    border: 1px solid transparent; border-bottom: 0; border-radius: 4px 4px 0 0;
+    background: transparent; padding: 5px 14px; margin-bottom: -1px;
+  }
+  .tabbar [role=tab][aria-selected=true] { background: var(--panel); border-color: var(--border); font-weight: 700; }
+  #busyBox { margin-left: auto; align-self: center; font-size: 12px; display: flex; align-items: center; gap: 6px; color: var(--text); }
+  #busyBox[hidden] { display: none; }
+  #busyBox b { font-variant-numeric: tabular-nums; font-weight: 400; color: var(--muted); }
+  #busyBox button { padding: 1px 10px; font-size: 12px; border-color: var(--danger); color: var(--danger); }
+  #busyBox + #pyStatus { margin-left: 8px; }
+  #busyBox[hidden] + #pyStatus { margin-left: auto; }
+  #pyStatus { margin-left: auto; align-self: center; font-size: 12px; padding: 2px 10px; border-radius: 10px; background: var(--head); border: 1px solid var(--border-soft); }
+  #pyStatus.ok { color: var(--ok); }
+  #pyStatus.err { color: var(--danger); }
+  .tabpanel { min-height: 0; overflow: hidden; background: var(--panel); }
+  .tabpanel[hidden] { display: none; }
+
+  /* ── 공통: 그룹 박스 / 표 ── */
+  fieldset { border: 1px solid var(--border); border-radius: 4px; margin: 0; padding: 6px 8px 8px; min-width: 0; min-height: 0; }
+  legend { padding: 0 4px; }
+  .label { margin: 0 0 3px; }
+  .table-wrap { border: 1px solid var(--border); overflow: auto; min-height: 0; background: var(--panel); }
+  table { border-collapse: collapse; width: 100%; }
+  th {
+    position: sticky; top: 0; z-index: 1; background: var(--head); font-weight: 400;
+    border-bottom: 1px solid var(--border); border-right: 1px solid var(--border-soft); padding: 3px 6px; white-space: nowrap;
+  }
+  th:last-child { border-right: 0; }
+  td { padding: 2px 6px; white-space: nowrap; }
+  tbody tr.sel td { background: var(--accent); color: var(--accent-text); }
+  .clickable tbody tr { cursor: pointer; }
+  .clickable tbody tr:hover:not(.sel) td { background: var(--row-hover); }
+  .c { text-align: center; } .r { text-align: right; font-variant-numeric: tabular-nums; }
+  textarea.code {
+    width: 100%; height: 100%; resize: none; border: 1px solid var(--border); border-radius: 0;
+    background: var(--code-bg); color: var(--code-text); padding: 4px 6px; tab-size: 4;
+    font: 12px/1.45 Consolas, "D2Coding", "Courier New", monospace; white-space: pre; overflow: auto;
+  }
+  .view { position: relative; background: var(--view); min-height: 0; overflow: hidden; }
+  .view canvas { position: absolute; inset: 0; margin: auto; max-width: 100%; max-height: 100%; }
+  .view .empty { position: absolute; inset: 0; display: grid; place-items: center; color: var(--muted); font-size: 12px; text-align: center; padding: 8px; }
+  .view .empty[hidden] { display: none; }
+
+  /* ── 필터 테스트 ── */
+  #tab-cheat { display: grid; grid-template-columns: minmax(280px, var(--tax-w, 1fr)) 8px minmax(320px, 1fr); gap: 4px; padding: 24px 24px 20px; }
+
+  /* ── 좌우 너비 조절 막대 ── */
+  .splitter { position: relative; cursor: col-resize; border-radius: 3px; touch-action: none; }
+  .splitter::after {
+    content: ''; position: absolute; top: 50%; left: 50%; width: 2px; height: 40px;
+    transform: translate(-50%, -50%); background: var(--border); border-radius: 1px;
+  }
+  .splitter:hover, .splitter.drag, .splitter:focus-visible { background: var(--row-hover); outline: none; }
+  .splitter:hover::after, .splitter.drag::after, .splitter:focus-visible::after { background: var(--accent); }
+  body.col-resizing, body.col-resizing * { cursor: col-resize !important; user-select: none; }
+
+  /* ── 표 열 너비 조절 (머리글 오른쪽 경계를 드래그) ── */
+  /* 손잡이는 머리글 칸 안쪽 오른쪽 끝에 둠 (바깥으로 나가면 옆 칸 머리글에 가려져 잡히지 않음) */
+  th .col-resizer { position: absolute; top: 0; right: 0; width: 10px; height: 100%; cursor: col-resize; z-index: 2; touch-action: none; }
+  th .col-resizer:hover, th .col-resizer.drag { background: color-mix(in srgb, var(--accent) 45%, transparent); }
+  table.fixed-cols { table-layout: fixed; }
+  table.fixed-cols td { white-space: normal; overflow-wrap: anywhere; }
+  #tab-cheat[hidden] { display: none; }
+  #tab-cheat > .tax-box { display: grid; grid-template-rows: 1fr; min-height: 0; min-width: 0; }
+  #taxTable td.no { text-align: center; width: 36px; vertical-align: top; border-bottom: 1px solid var(--border-soft); }
+  #taxTable td.grp { text-align: center; white-space: normal; min-width: 100px; max-width: 160px; vertical-align: top; border-bottom: 1px solid var(--border-soft); border-right: 1px solid var(--border-soft); }
+  #taxTable tr.sel td.no, #taxTable tr.sel td.grp, #taxTable tr:hover td.no, #taxTable tr:hover td.grp { background: transparent; color: inherit; }
+  #taxTable tr:focus-visible { outline: none; }
+  #taxTable td:nth-last-child(-n+2) { white-space: normal; word-break: break-word; } /* 함수·기능 열은 줄바꿈 → 가로 스크롤 없이 전부 보이게 */
+  #taxTable td:nth-last-child(2) { min-width: 140px; }
+  #taxTable td:last-child { min-width: 110px; }
+  #taxTable tr.last td { border-bottom: 1px solid var(--border-soft); }
+  .right-col { display: grid; grid-template-rows: 3fr minmax(200px, 2fr); gap: 12px; min-height: 0; min-width: 0; }
+  .compare-box, .snippet { display: grid; grid-template-rows: 1fr; }
+  .snippet .code-area { display: grid; grid-template-rows: 1fr auto; gap: 6px; min-height: 0; }
+  .run-row { display: flex; align-items: flex-start; gap: 8px; }
+  #runMsg { flex: 1; font-size: 12px; white-space: pre-wrap; max-height: 4.5em; overflow: auto; }
+  #runMsg.err { color: var(--danger); } #runMsg.ok { color: var(--ok); }
+  .compare { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; min-height: 0; }
+  .compare .pv { display: grid; grid-template-rows: auto 1fr; min-height: 0; min-width: 0; }
+  .snippet .view { border: 1px solid var(--border); }
+  #resInfo { flex: 1 1 60px; text-align: right; font-size: 12px; overflow: hidden; text-overflow: ellipsis; }
+  .preview-head { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; margin: 0 0 4px; min-width: 0; }
+  .preview-head span { white-space: nowrap; }
+  #curImgName { flex: 1 1 60px; text-align: right; min-width: 0; overflow: hidden; text-overflow: ellipsis; font-size: 12px; }
+  .preview-head button { margin-left: auto; }
+  .preview-head button { padding: 1px 8px; font-size: 12px; }
+  dialog.scen { width: min(1100px, calc(100vw - 32px)); height: min(560px, calc(100vh - 48px)); padding: 12px 16px 16px; }
+  dialog.scen[open] { display: grid; grid-template-rows: auto auto 1fr; gap: 8px; }
+  .scen-title { display: flex; align-items: center; justify-content: space-between; }
+  .scen-title h3 { margin: 0; }
+  .scen-title button { border: 0; background: transparent; font-size: 16px; padding: 2px 8px; }
+  .scen-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+  .scen-bar span { margin-right: auto; }
+  #scenTable td { white-space: normal; }
+
+  dialog { border: 1px solid var(--border); border-radius: 6px; background: var(--panel); color: var(--text); padding: 16px; width: min(600px, calc(100vw - 32px)); }
+  dialog::backdrop { background: rgba(0,0,0,.35); }
+  dialog h3 { margin: 0 0 12px; font-size: 14px; }
+  .form { display: grid; grid-template-columns: auto 1fr; gap: 8px 10px; align-items: center; }
+  .form input { border: 1px solid var(--border); padding: 4px 6px; background: var(--panel); }
+  .dlg-btns { display: flex; justify-content: flex-end; gap: 6px; margin-top: 14px; }
+  #msgText { white-space: pre-wrap; margin: 0; }
+
+  /* ── 이미지 수정 ── */
+  #tab-basic {
+    display: grid; gap: 4px; padding: 14px 16px 16px;
+    grid-template-columns: minmax(320px, 1fr) 8px var(--cat-w, 230px) 8px var(--chain-w, 340px);
+    grid-template-areas: "view s1 catalog s2 chain";
+  }
+  #splitBasic1 { grid-area: s1; }
+  #splitBasic2 { grid-area: s2; }
+  #tab-basic > .basic-right { grid-area: view; }
+  #tab-basic > .catalog { grid-area: catalog; }
+  #tab-basic > .chain-box { grid-area: chain; }
+  #tab-basic[hidden] { display: none; }
+  #tab-basic > fieldset { display: grid; min-height: 0; }
+  .catalog { grid-template-rows: auto 1fr; gap: 6px; }
+  .catalog input[type=search] { border: 1px solid var(--border); border-radius: 4px; padding: 4px 8px; background: var(--panel); width: 100%; }
+  #opList { overflow: auto; min-height: 0; border: 1px solid var(--border); border-radius: 4px; }
+  #opList .cat { font-size: 11px; font-weight: 700; color: var(--muted); padding: 8px 10px 2px; position: sticky; top: 0; background: var(--panel); }
+  #opList button {
+    display: grid; grid-template-columns: 1fr auto; width: 100%; text-align: left; border: 0; border-radius: 0;
+    padding: 4px 10px; background: transparent; white-space: normal;
+  }
+  #opList button:hover { background: var(--row-hover); }
+  #opList button small { grid-column: 1; color: var(--muted); font-size: 11px; }
+  #opList button .plus { grid-column: 2; grid-row: 1 / span 2; align-self: center; color: var(--accent); font-weight: 700; font-size: 15px; }
+
+  .chain-box { grid-template-rows: auto 1fr auto; gap: 8px; }
+  .chain-bar, .chain-foot { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  .chain-bar select { flex: 1; min-width: 0; border: 1px solid var(--border); border-radius: 4px; padding: 3px 6px; background: var(--panel); color: var(--text); font: inherit; }
+  .chain-foot span { margin-right: auto; font-size: 12px; }
+  #chainList { overflow: auto; min-height: 0; display: flex; flex-direction: column; gap: 8px; padding-right: 2px; }
+  #chainList .hint { color: var(--muted); text-align: center; padding: 30px 12px; border: 1px dashed var(--border); border-radius: 6px; font-size: 12px; }
+  .step { border: 1px solid var(--border); border-radius: 6px; background: var(--panel); }
+  .step.off { opacity: .55; }
+  .step.err { border-color: var(--danger); }
+  .step-head { display: flex; align-items: center; gap: 6px; padding: 5px 6px 5px 8px; background: var(--head); border-radius: 6px 6px 0 0; border-bottom: 1px solid var(--border-soft); }
+  .step-head .num { font-weight: 700; color: var(--accent); min-width: 16px; }
+  .step-head .name { font-weight: 700; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .step-head .ms { font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .step-head button { border: 0; background: transparent; padding: 0 4px; font-size: 13px; line-height: 1.4; color: var(--muted); }
+  .step-head button:hover:not(:disabled) { color: var(--text); }
+  .step-head input { margin: 0; accent-color: var(--accent); }
+  .step-body { padding: 4px 10px 8px; display: grid; grid-template-columns: auto 1fr auto; gap: 2px 8px; align-items: center; }
+  .step-body label { font-size: 12px; white-space: nowrap; }
+  .step-body input[type=range] { width: 100%; accent-color: var(--accent); }
+  .step-body .val { font-size: 12px; color: var(--accent); font-variant-numeric: tabular-nums; min-width: 34px; text-align: right; }
+  .step-body select { grid-column: 2 / span 2; border: 1px solid var(--border); border-radius: 4px; background: var(--panel); color: var(--text); font: inherit; font-size: 12px; padding: 1px 4px; }
+  .step-body .chk { grid-column: 2 / span 2; }
+  .step-body .none { grid-column: 1 / -1; color: var(--muted); font-size: 12px; }
+
+  .basic-right { display: grid; grid-template-rows: auto 1fr 240px; gap: 10px; min-height: 0; min-width: 0; }
+  .basic-toolbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .basic-toolbar select { border: 1px solid var(--border); border-radius: 4px; padding: 3px 6px; background: var(--panel); color: var(--text); font: inherit; }
+  #basicStatus { margin-left: auto; font-size: 12px; }
+  #basicStatus.err { color: var(--danger); } #basicStatus.ok { color: var(--ok); }
+  .basic-compare { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; min-height: 0; }
+  .basic-compare .pv { display: grid; grid-template-rows: auto 1fr; min-height: 0; min-width: 0; }
+  .basic-compare .view { border: 1px solid var(--border); }
+  .hist-box { display: grid; grid-template-rows: auto 1fr; gap: 6px; min-height: 0; }
+  .hist-bar { display: flex; align-items: center; gap: 12px; font-size: 12px; flex-wrap: wrap; }
+  .hist-bar label { display: inline-flex; align-items: center; gap: 4px; }
+  .hist-bar input { accent-color: var(--accent); margin: 0; }
+  .hist-legend { margin-left: auto; display: flex; gap: 10px; color: var(--muted); }
+  .hist-legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; vertical-align: -1px; margin-right: 3px; }
+  .hist-main { display: grid; grid-template-columns: 1fr 230px; gap: 10px; min-height: 0; }
+  .hist-plot { position: relative; min-height: 0; }
+  #histCv { position: absolute; inset: 0; width: 100%; height: 100%; background: var(--view); border: 1px solid var(--border); border-radius: 4px; cursor: crosshair; }
+  #histTip { position: absolute; top: 4px; left: 8px; font-size: 11px; pointer-events: none; color: var(--text); background: color-mix(in srgb, var(--panel) 85%, transparent); padding: 1px 6px; border-radius: 3px; }
+  #histTip:empty { display: none; }
+  #histStats td { padding: 2px 6px; font-size: 12px; }
+  #histStats td:first-child { color: var(--muted); }
+
+  dialog.code-dlg { width: min(860px, calc(100vw - 32px)); height: min(640px, calc(100vh - 48px)); padding: 12px 16px 16px; }
+  dialog.code-dlg[open] { display: grid; grid-template-rows: auto 1fr auto; gap: 8px; }
+  dialog.code-dlg .dlg-btns { margin-top: 0; }
+
+  @media (max-width: 900px) {
+    #tab-basic { grid-template-columns: 1fr; grid-template-areas: "view" "catalog" "chain"; padding: 16px; gap: 12px; }
+    .splitter { display: none; }
+    #tab-basic > fieldset.catalog { height: 280px; }
+    #tab-basic > fieldset.chain-box { height: 460px; }
+    .basic-right { grid-template-rows: auto auto auto; }
+    .basic-compare .view { height: 220px; }
+    .hist-box { height: 360px; }
+    .hist-main { grid-template-columns: 1fr; grid-template-rows: 1fr auto; }
+  }
+
+  @media (max-width: 900px) {
+    body { overflow: auto; height: auto; }
+    .tabpanel { overflow: visible; }
+    #tab-cheat { grid-template-columns: 1fr; padding: 16px; gap: 12px; }
+    #tab-cheat > .tax-box { height: 60vh; }
+    .right-col { grid-template-rows: auto auto; }
+    .snippet textarea { height: 280px; }
+    .snippet .view { height: 220px; }
+    #pyStatus { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<div class="tabbar" role="tablist">
+  <button role="tab" id="tabbtn-cheat" aria-controls="tab-cheat" aria-selected="true">필터 테스트</button>
+  <button role="tab" id="tabbtn-basic" aria-controls="tab-basic" aria-selected="false">이미지 수정</button>
+  <span id="busyBox" hidden role="status">처리 중… <b id="busyTime"></b> <button id="btnStop" title="오래 걸리는 작업을 중지합니다 (Python/OpenCV를 다시 준비하는 데 몇 초 걸립니다)">중지</button></span>
+  <span id="pyStatus"title="샘플 코드는 브라우저 안의 Python(Pyodide) + OpenCV로 실행됩니다">Python/OpenCV 로딩 중…</span>
+</div>
+
+<!-- ═════════════ 필터 테스트 ═════════════ -->
+<section class="tabpanel" id="tab-cheat" role="tabpanel" aria-labelledby="tabbtn-cheat">
+  <input type="file" id="fileInput" accept="image/*" hidden>
+  <fieldset class="tax-box">
+    <legend>OpenCV 분류 체계 치트시트</legend>
+    <div class="table-wrap">
+      <table id="taxTable" class="clickable">
+        <thead><tr><th>No</th><th>구분</th><th>종류</th><th>OpenCV 함수</th><th>주요 기능</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </fieldset>
+
+  <div class="splitter" id="splitCheat" role="separator" aria-orientation="vertical" aria-label="치트시트 / 코드 영역 너비 조절" tabindex="0" title="드래그해서 너비 조절 · 더블클릭: 기본값"></div>
+
+  <div class="right-col">
+  <fieldset class="compare-box">
+    <legend>원본 / 실행 결과 비교</legend>
+    <div class="compare">
+      <div class="pv">
+        <div class="preview-head">
+          <span>원본 이미지</span>
+          <span id="curImgName" class="muted cur-img-name" title="현재 입력 이미지">sample.png (기본)</span>
+          <button id="btnChangeImg" title="샘플 코드에 사용할 입력 이미지를 바꿉니다">이미지 변경…</button>
+        </div>
+        <div class="view"><canvas id="cvSrcPreview"></canvas><div class="empty" id="emptySrcPreview">이미지 준비 중…</div></div>
+      </div>
+      <div class="pv">
+        <div class="preview-head">
+          <span>실행 결과 미리보기</span>
+          <span id="resInfo" class="muted"></span>
+        </div>
+        <div class="view"><canvas id="cvPreview"></canvas><div class="empty" id="emptyPreview">코드를 실행하면 show_result() 결과가 여기에 표시됩니다.</div></div>
+      </div>
+    </div>
+  </fieldset>
+
+  <fieldset class="snippet">
+    <legend>Python 코드 (수정 가능)</legend>
+    <div class="code-area">
+      <textarea class="code" id="snipCode" spellcheck="false" aria-label="샘플 코드"
+        placeholder="왼쪽 치트시트에서 연산을 선택하세요."></textarea>
+      <div class="run-row">
+        <div id="runMsg" role="status"></div>
+        <button id="btnScen" title="응용 방법 별 최적 필터 조합 정보 보기">응용 필터 조합 정보</button>
+        <button id="btnRun" class="primary" title="Ctrl+Enter">코드 실행 및 결과 표시</button>
+      </div>
+    </div>
+  </fieldset>
+  </div>
+</section>
+
+<dialog id="scenDlg" class="scen" aria-labelledby="scenTitle">
+  <div class="scen-title">
+    <h3 id="scenTitle">응용 방법 별 최적 필터 조합 정보</h3>
+    <button id="btnScenClose" aria-label="닫기">✕</button>
+  </div>
+  <div class="scen-bar">
+    <span>응용 필터 조합(ini 관리)</span>
+    <button id="btnIniImport" title="pipelines.ini 불러오기">INI 불러오기</button>
+    <button id="btnIniExport" title="pipelines.ini로 저장">INI 내보내기</button>
+    <button id="btnDelScen" disabled>삭제</button>
+    <button id="btnAddScen" class="primary">등록</button>
+  </div>
+  <div class="table-wrap">
+    <table id="scenTable" class="clickable">
+      <thead><tr><th style="width:28%">이미지 상황별 최적 필터 조합(현행 유지)</th><th style="width:24%">목표</th><th>권장 파이프라인</th></tr></thead>
+      <tbody></tbody>
+    </table>
+  </div>
+  <input type="file" id="iniInput" accept=".ini,text/plain" hidden>
+</dialog>
+
+<dialog id="addDlg">
+  <h3>필터 조합 정보 등록</h3>
+  <form method="dialog" class="form" id="addForm">
+    <label for="fScen">이미지 상황</label><input id="fScen" required>
+    <label for="fGoal">목표</label><input id="fGoal" required>
+    <label for="fPipe">권장 파이프라인</label><input id="fPipe" required placeholder="예) GaussianBlur(5×5) → Canny → Closing">
+  </form>
+  <div class="dlg-btns"><button id="btnAddSave" class="primary">저장</button><button id="btnAddCancel">취소</button></div>
+</dialog>
+
+<!-- ═════════════ 이미지 수정: 필터 조합 ═════════════ -->
+<section class="tabpanel" id="tab-basic" role="tabpanel" aria-labelledby="tabbtn-basic" hidden>
+  <fieldset class="catalog">
+    <legend>필터 목록 (클릭하면 추가)</legend>
+    <input type="search" id="opSearch" placeholder="필터 검색 (예: 블러, 엣지)" aria-label="필터 검색">
+    <div id="opList"></div>
+  </fieldset>
+
+  <fieldset class="chain-box">
+    <legend>적용할 필터 (위에서부터 순서대로)</legend>
+    <div class="chain-bar">
+      <select id="presetSel" aria-label="추천 조합 불러오기"><option value="">추천 조합 불러오기…</option></select>
+      <button id="btnChainClear">모두 지우기</button>
+    </div>
+    <div id="chainList"></div>
+    <div class="chain-foot">
+      <span id="chainTotal" class="muted"></span>
+      <button id="btnChainCode">Python 코드 보기</button>
+    </div>
+  </fieldset>
+
+  <div class="splitter" id="splitBasic1" role="separator" aria-orientation="vertical" aria-label="이미지 / 필터 목록 너비 조절" tabindex="0" title="드래그해서 너비 조절 · 더블클릭: 기본값"></div>
+  <div class="splitter" id="splitBasic2" role="separator" aria-orientation="vertical" aria-label="필터 목록 / 적용할 필터 너비 조절" tabindex="0" title="드래그해서 너비 조절 · 더블클릭: 기본값"></div>
+
+  <div class="basic-right">
+    <div class="basic-toolbar">
+      <button id="btnBasicImg">이미지 변경…</button>
+      <span class="muted cur-img-name">sample.png (기본)</span>
+      <label class="muted" for="previewSize">미리보기 해상도</label>
+      <select id="previewSize" title="큰 이미지는 축소해서 빠르게 미리보기합니다 (저장은 항상 원본 크기)">
+        <option value="1024">빠르게 (최대 1024px)</option>
+        <option value="2048" selected>보통 (최대 2048px)</option>
+        <option value="0">원본 크기</option>
+      </select>
+      <button id="btnBasicSave" class="primary">결과 저장 (PNG)</button>
+      <span id="basicStatus" role="status"></span>
+    </div>
+    <div class="basic-compare">
+      <div class="pv">
+        <div class="preview-head"><span>원본 이미지</span><span id="basicSrcInfo" class="muted" style="margin-left:auto;font-size:12px"></span></div>
+        <div class="view"><canvas id="cvBasicSrc"></canvas><div class="empty" id="emptyBasicSrc">이미지 준비 중…</div></div>
+      </div>
+      <div class="pv">
+        <div class="preview-head"><span>필터 적용 결과</span><span id="basicResInfo" class="muted" style="margin-left:auto;font-size:12px"></span></div>
+        <div class="view"><canvas id="cvBasicRes"></canvas><div class="empty" id="emptyBasicRes">Python/OpenCV 로딩 중…</div></div>
+      </div>
+    </div>
+    <fieldset class="hist-box">
+      <legend>히스토그램 (밝기 분포)</legend>
+      <div class="hist-bar">
+        <label><input type="radio" name="histMode" value="luma" checked> 밝기</label>
+        <label><input type="radio" name="histMode" value="rgb"> RGB 채널</label>
+        <label><input type="checkbox" id="histLog"> 로그 스케일</label>
+        <span class="hist-legend" id="histLegend"></span>
+      </div>
+      <div class="hist-main">
+        <div class="hist-plot"><canvas id="histCv" aria-label="히스토그램 차트"></canvas><div id="histTip"></div></div>
+        <div class="table-wrap">
+          <table id="histStats">
+            <thead><tr><th>밝기 통계</th><th>원본</th><th>결과</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+    </fieldset>
+  </div>
+</section>
+
+<dialog id="codeDlg" class="code-dlg" aria-labelledby="codeTitle">
+  <div class="scen-title">
+    <h3 id="codeTitle">필터 조합 Python 코드</h3>
+    <button id="btnCodeClose" aria-label="닫기">✕</button>
+  </div>
+  <textarea class="code" id="chainCode" readonly spellcheck="false" aria-label="필터 조합 Python 코드"></textarea>
+  <div class="dlg-btns">
+    <button id="btnCodeCopy">코드 복사</button>
+    <button id="btnCodeToExpert" class="primary" title="필터 테스트 탭의 코드 편집기에 넣고 실행합니다">필터 테스트 탭에서 열기</button>
+  </div>
+</dialog>
+
+<dialog id="msgDlg">
+  <h3 id="msgTitle"></h3>
+  <p id="msgText"></p>
+  <div class="dlg-btns"><button id="btnMsgOk" class="primary">확인</button></div>
+</dialog>
+
+<!-- ═════════════ Python 코어 (KONG_이미지필터테스트_R09.py의 imread_unicode / show_result) ═════════════ -->
+<script type="text/x-python" id="py-core">
+import cv2
+import numpy as np
+
+
+def sanitize_path(p):
+    if p is None:
+        return ""
+    if isinstance(p, (bytes, bytearray)):
+        for enc in ("utf-8", "cp949", "euc-kr"):
+            try:
+                p = p.decode(enc)
+                break
+            except Exception:
+                continue
+        else:
+            p = p.decode("utf-8", errors="replace")
+    p = str(p).strip()
+    p = p.replace("\\", "/")
+    return p
+
+
+def imread_unicode(path, flags=cv2.IMREAD_COLOR):
+    path = sanitize_path(path)
+    try:
+        data = np.fromfile(path, dtype=np.uint8)
+        img = cv2.imdecode(data, flags)
+        return img
+    except Exception:
+        return None
+
+
+# ───────── 브라우저 연동용 ─────────
+_result = {"img": None}
+
+
+def _to_rgba(img):
+    img = np.asarray(img)
+    if img.dtype != np.uint8:
+        img = cv2.convertScaleAbs(img)
+    if img.ndim == 2:
+        return cv2.cvtColor(img, cv2.COLOR_GRAY2RGBA)
+    if img.shape[2] == 3:
+        return cv2.cvtColor(img, cv2.COLOR_BGR2RGBA)
+    if img.shape[2] == 4:
+        return cv2.cvtColor(img, cv2.COLOR_BGRA2RGBA)
+    raise ValueError("표시할 수 없는 이미지 형식입니다.")
+
+
+def show_result(img_bgr_or_gray):
+    if img_bgr_or_gray is None:
+        return
+    _result["img"] = np.ascontiguousarray(_to_rgba(img_bgr_or_gray))
+
+
+def _take_result():
+    r = _result["img"]
+    _result["img"] = None
+    return r
+
+
+def _make_env():
+    return {"cv2": cv2, "np": np, "show_result": show_result, "imread_unicode": imread_unicode, "__name__": "__main__"}
+
+
+# ───────── 이미지 수정: 필터 조합(체인) ─────────
+# 각 필터는 "실행할 Python 코드 줄"로 정의 → 실행과 'Python 코드 보기'가 항상 같은 코드
+import json
+import time
+
+
+def to_gray(img):
+    return img if img.ndim == 2 else cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+
+
+def to_bgr(img):
+    return img if img.ndim == 3 else cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
+
+
+def _n(v):
+    v = float(v)
+    return int(v) if v.is_integer() else round(v, 3)
+
+
+def _odd(v):
+    v = max(1, int(float(v)))
+    return v if v % 2 else v + 1
+
+
+def _bin(p):
+    return "cv2.THRESH_BINARY_INV" if p.get("inv") else "cv2.THRESH_BINARY"
+
+
+_MORPH = {"erode": "MORPH_ERODE", "dilate": "MORPH_DILATE", "open": "MORPH_OPEN", "close": "MORPH_CLOSE",
+          "gradient": "MORPH_GRADIENT", "tophat": "MORPH_TOPHAT", "blackhat": "MORPH_BLACKHAT"}
+_SHAPE = {"rect": "MORPH_RECT", "ellipse": "MORPH_ELLIPSE", "cross": "MORPH_CROSS"}
+
+
+def _morph_code(op):
+    return lambda p: [
+        f"kernel = cv2.getStructuringElement(cv2.{_SHAPE[p['shape']]}, ({int(p['ksize'])}, {int(p['ksize'])}))",
+        f"img = cv2.morphologyEx(img, cv2.{_MORPH[op]}, kernel, iterations={int(p['iter'])})",
+    ]
+
+
+_CODE = {
+    "gray": lambda p: ["img = to_gray(img)"],
+    "bc": lambda p: [f"img = cv2.convertScaleAbs(img, alpha={_n(p['alpha'])}, beta={_n(p['beta'])})"],
+    "gamma": lambda p: [
+        f"table = np.clip(((np.arange(256) / 255.0) ** (1.0 / {_n(p['gamma'])})) * 255, 0, 255).astype(np.uint8)",
+        "img = cv2.LUT(img, table)",
+    ],
+    "equalize": lambda p: [
+        "if img.ndim == 2:",
+        "    img = cv2.equalizeHist(img)",
+        "else:",
+        "    ycc = cv2.cvtColor(img, cv2.COLOR_BGR2YCrCb)",
+        "    ycc[:, :, 0] = cv2.equalizeHist(ycc[:, :, 0])",
+        "    img = cv2.cvtColor(ycc, cv2.COLOR_YCrCb2BGR)",
+    ],
+    "clahe": lambda p: [
+        f"clahe = cv2.createCLAHE(clipLimit={_n(p['clip'])}, tileGridSize=({int(p['tile'])}, {int(p['tile'])}))",
+        "if img.ndim == 2:",
+        "    img = clahe.apply(img)",
+        "else:",
+        "    lab = cv2.cvtColor(img, cv2.COLOR_BGR2Lab)",
+        "    lab[:, :, 0] = clahe.apply(lab[:, :, 0])",
+        "    img = cv2.cvtColor(lab, cv2.COLOR_Lab2BGR)",
+    ],
+    "saturation": lambda p: [
+        "if img.ndim == 3:",
+        "    hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV).astype(np.float32)",
+        f"    hsv[:, :, 1] = np.clip(hsv[:, :, 1] * {_n(p['scale'])}, 0, 255)",
+        "    img = cv2.cvtColor(hsv.astype(np.uint8), cv2.COLOR_HSV2BGR)",
+    ],
+    "invert": lambda p: ["img = cv2.bitwise_not(img)"],
+    "posterize": lambda p: [
+        f"step = 255.0 / ({int(p['levels'])} - 1)",
+        "img = (np.round(img / step) * step).astype(np.uint8)",
+    ],
+    "gaussian": lambda p: [f"img = cv2.GaussianBlur(img, ({_odd(p['ksize'])}, {_odd(p['ksize'])}), {_n(p['sigma'])})"],
+    "median": lambda p: [f"img = cv2.medianBlur(img, {_odd(p['ksize'])})"],
+    "box": lambda p: [f"img = cv2.blur(img, ({int(p['ksize'])}, {int(p['ksize'])}))"],
+    "bilateral": lambda p: [f"img = cv2.bilateralFilter(img, {int(p['d'])}, {_n(p['sc'])}, {_n(p['ss'])})"],
+    "nlmeans": lambda p: [
+        "if img.ndim == 2:",
+        f"    img = cv2.fastNlMeansDenoising(img, None, {_n(p['h'])}, 7, 21)",
+        "else:",
+        f"    img = cv2.fastNlMeansDenoisingColored(img, None, {_n(p['h'])}, {_n(p['h'])}, 7, 21)",
+    ],
+    "unsharp": lambda p: [
+        f"blur = cv2.GaussianBlur(img, (0, 0), {_n(p['sigma'])})",
+        f"img = cv2.addWeighted(img, {_n(1 + float(p['amount']))}, blur, {_n(-float(p['amount']))}, 0)",
+    ],
+    "canny": lambda p: [f"img = cv2.Canny(to_gray(img), {int(p['t1'])}, {int(p['t2'])})"],
+    "sobel": lambda p: [
+        "g = to_gray(img)",
+        f"gx = cv2.Sobel(g, cv2.CV_32F, 1, 0, ksize={int(p['ksize'])})",
+        f"gy = cv2.Sobel(g, cv2.CV_32F, 0, 1, ksize={int(p['ksize'])})",
+        "img = cv2.convertScaleAbs(" + {"x": "gx", "y": "gy", "xy": "cv2.magnitude(gx, gy)"}[p["dir"]] + ")",
+    ],
+    "laplacian": lambda p: [f"img = cv2.convertScaleAbs(cv2.Laplacian(to_gray(img), cv2.CV_16S, ksize={_odd(p['ksize'])}))"],
+    "scharr": lambda p: [
+        "g = to_gray(img)",
+        "img = cv2.convertScaleAbs(cv2.magnitude(cv2.Scharr(g, cv2.CV_32F, 1, 0), cv2.Scharr(g, cv2.CV_32F, 0, 1)))",
+    ],
+    "threshold": lambda p: [f"_, img = cv2.threshold(to_gray(img), {int(p['thresh'])}, 255, {_bin(p)})"],
+    "otsu": lambda p: [f"_, img = cv2.threshold(to_gray(img), 0, 255, {_bin(p)} + cv2.THRESH_OTSU)"],
+    "adaptive": lambda p: [
+        "img = cv2.adaptiveThreshold(to_gray(img), 255, "
+        f"cv2.{'ADAPTIVE_THRESH_MEAN_C' if p['method'] == 'mean' else 'ADAPTIVE_THRESH_GAUSSIAN_C'}, "
+        f"{_bin(p)}, {max(3, _odd(p['block']))}, {_n(p['C'])})"
+    ],
+    "dilate": _morph_code("dilate"),
+    "erode": _morph_code("erode"),
+    "open": _morph_code("open"),
+    "close": _morph_code("close"),
+    "gradient": _morph_code("gradient"),
+    "tophat": _morph_code("tophat"),
+    "blackhat": _morph_code("blackhat"),
+    "rotate": lambda p: [
+        "h, w = img.shape[:2]",
+        f"M = cv2.getRotationMatrix2D((w / 2, h / 2), {_n(p['angle'])}, {_n(p['scale'])})",
+        "img = cv2.warpAffine(img, M, (w, h), borderMode=cv2.BORDER_REPLICATE)",
+    ],
+    "flip": lambda p: [f"img = cv2.flip(img, {dict(h=1, v=0, hv=-1)[p['mode']]})"],
+    "pixelate": lambda p: [
+        "h, w = img.shape[:2]",
+        f"small = cv2.resize(img, (max(1, w // {int(p['block'])}), max(1, h // {int(p['block'])})), interpolation=cv2.INTER_AREA)",
+        "img = cv2.resize(small, (w, h), interpolation=cv2.INTER_NEAREST)",
+    ],
+    "contours": lambda p: [
+        "_, bw = cv2.threshold(to_gray(img), 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)",
+        "contours, _ = cv2.findContours(bw, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)",
+        f"contours = [c for c in contours if cv2.contourArea(c) >= {int(p['min_area'])}]",
+        "img = to_bgr(img).copy()",
+        f"cv2.drawContours(img, contours, -1, (0, 0, 255), {int(p['thick'])})",
+    ],
+}
+
+
+def _apply_chain(path, steps_json, max_side):
+    img = imread_unicode(path, cv2.IMREAD_COLOR)
+    if img is None:
+        raise RuntimeError("이미지를 읽을 수 없습니다. 경로를 확인하세요.")
+    h, w = img.shape[:2]
+    scale = 1.0
+    if max_side and max(h, w) > max_side:  # 미리보기 속도를 위해 축소
+        scale = max_side / max(h, w)
+        img = cv2.resize(img, (max(1, round(w * scale)), max(1, round(h * scale))), interpolation=cv2.INTER_AREA)
+    ns = {"cv2": cv2, "np": np, "to_gray": to_gray, "to_bgr": to_bgr, "img": img}
+    times = []
+    for i, st in enumerate(json.loads(steps_json), 1):
+        t0 = time.perf_counter()
+        try:
+            exec("\n".join(_CODE[st["op"]](st["p"])), ns)
+        except Exception as e:
+            raise RuntimeError(f"{i}단계 [{st.get('name', st['op'])}] 오류: {e}") from None
+        times.append(round((time.perf_counter() - t0) * 1000, 1))
+    img = ns["img"]
+    show_result(img)
+    return json.dumps({"times": times, "gray": img.ndim == 2, "w": int(img.shape[1]), "h": int(img.shape[0]), "scale": scale})
+
+
+def _chain_code(path, steps_json):
+    lines = [
+        "import cv2",
+        "import numpy as np",
+        "",
+        "",
+        "def imread_unicode(path, flags=cv2.IMREAD_COLOR):",
+        "    data = np.fromfile(str(path), dtype=np.uint8)",
+        "    return cv2.imdecode(data, flags)",
+        "",
+        "",
+        "def to_gray(img):",
+        "    return img if img.ndim == 2 else cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)",
+        "",
+        "",
+        "def to_bgr(img):",
+        "    return img if img.ndim == 3 else cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)",
+        "",
+        "",
+        f'img = imread_unicode(r"{sanitize_path(path)}")',
+        "if img is None:",
+        '    raise RuntimeError("이미지를 읽을 수 없습니다. 경로를 확인하세요.")',
+        "",
+    ]
+    for i, st in enumerate(json.loads(steps_json), 1):
+        lines.append(f"# {i}. {st.get('name', st['op'])}")
+        lines += _CODE[st["op"]](st["p"])
+        lines.append("")
+    lines.append('show_result(img)  # 단독 실행 시: cv2.imshow("result", img); cv2.waitKey(0)')
+    return "\n".join(lines)
+
+</script>
+
+<script>
+'use strict';
+
+// ═══════════════════════ 치트시트 데이터 (R09.py taxonomy) ═══════════════════════
+const TAXONOMY = [
+  [1, '픽셀 단위(Pixel Ops)', [
+    ['Gamma correction', 'cv2.LUT (권장) / 직접 구현', '밝기 비선형 보정, 저조도/과노출 보정'],
+    ['Histogram equalization', 'cv2.equalizeHist', '전체 대비 향상(그레이)'],
+    ['CLAHE', 'cv2.createCLAHE().apply', '국부 대비 향상, 과증폭 방지'],
+    ['Averaging', 'cv2.add / cv2.addWeighted', '단순 픽셀 결합(밝기/블렌딩)'],
+    ['Normalization', 'cv2.normalize', '값 범위 정규화'],
+    ['Logical Ops', 'cv2.bitwise_and/or/xor/not', 'AND/OR/XOR, 마스크 처리'],
+    ['convertScaleAbs', 'cv2.convertScaleAbs', '미분 결과를 8bit 영상으로 변환'],
+  ]],
+  [2, 'Filtering&Noise reduction(필터링)', [
+    ['Convolution', 'cv2.filter2D', '모든 필터의 기본 연산'],
+    ['Average filter', 'cv2.blur / cv2.boxFilter', '랜덤 노이즈 제거'],
+    ['Gaussian filter', 'cv2.GaussianBlur', '고주파 노이즈 제거, Canny 전처리'],
+    ['Median filter', 'cv2.medianBlur', '소금·후추 노이즈 제거'],
+    ['Bilateral filter', 'cv2.bilateralFilter', '엣지 보존 + 노이즈 제거'],
+    ['Non-local Means', 'cv2.fastNlMeansDenoising(Colored)', '텍스처 유지 고급 노이즈 제거'],
+  ]],
+  [3, 'Gradient & Edges Detection (미분 기반)', [
+    ['Prewitt', 'filter2D(커널 구현)', '1차 미분, 고전 연산자'],
+    ['Sobel', 'cv2.Sobel', '방향성 엣지 검출'],
+    ['Scharr', 'cv2.Scharr', 'Sobel 고정밀 버전'],
+    ['Robert', 'filter2D(커널 구현)', '대각선 민감'],
+    ['Laplacian', 'cv2.Laplacian', '2차 미분, 전체 엣지'],
+    ['Canny', 'cv2.Canny', '표준 엣지 검출 (NMS+Hysteresis)'],
+  ]],
+  [4, 'Morphological (형태학)', [
+    ['Dilation (팽창)', 'cv2.dilate', '영역 확장/구멍 메우기'],
+    ['Erosion (침식)', 'cv2.erode', '작은 흰색 노이즈 제거'],
+    ['Opening (Erosion → Dilation)', 'cv2.morphologyEx(MORPH_OPEN)', '점 노이즈 제거'],
+    ['Closing (Dilation → Erosion)', 'cv2.morphologyEx(MORPH_CLOSE)', '내부 구멍 메우기'],
+    ['Morph Gradient', 'cv2.morphologyEx(MORPH_GRADIENT)', '경계선 추출'],
+    ['Skeletonization', '반복 erode/subtract 구현', '중심선 추출(직접 구현)'],
+    ['Distance transform', 'cv2.distanceTransform', '객체 중심 거리 계산'],
+    ['Watershed', 'cv2.watershed', '영역 분할(Segmentation)'],
+  ]],
+  [5, 'Thresholding & Segmentation', [
+    ['Global Threshold', 'cv2.threshold', '조명 균일'],
+    ['Adaptive Threshold', 'cv2.adaptiveThreshold', '조명 불균일'],
+    ['Otsu Threshold', 'cv2.threshold(..., THRESH_OTSU)', '자동 임계값'],
+    ['Connected Components', 'cv2.connectedComponentsWithStats', '객체 분리'],
+    ['Grabcut', 'cv2.grabCut', '전경/배경 분리'],
+  ]],
+  [6, 'Feature Detection & Description', [
+    ['Harris Corner', 'cv2.cornerHarris', '코너 검출'],
+    ['Shi-Tomasi', 'cv2.goodFeaturesToTrack', '안정적인 코너'],
+    ['FAST', 'cv2.FastFeatureDetector_create', '고속 코너 검출'],
+    ['ORB', 'cv2.ORB_create', '회전/스케일 불변 특징'],
+    ['SIFT', 'cv2.SIFT_create', '고정밀 특징'],
+    ['SURF', 'cv2.xfeatures2d.SURF_create', 'Contrib(환경 의존)'],
+    ['BRIEF', 'cv2.xfeatures2d.BriefDescriptorExtractor_create', 'Contrib(경량 디스크립터)'],
+  ]],
+  [7, 'Shape & Line Detection', [
+    ['Contours', 'cv2.findContours / cv2.drawContours', '객체 외곽선'],
+    ['Hough Line', 'cv2.HoughLines / cv2.HoughLinesP', '직선 검출'],
+    ['Hough Circle', 'cv2.HoughCircles', '원 검출'],
+    ['Convex Hull', 'cv2.convexHull', '외곽 다각형'],
+    ['Bounding Box', 'cv2.boundingRect / cv2.minAreaRect', '객체 영역'],
+  ]],
+  [8, 'Geometric\\Transform', [
+    ['Translation', 'cv2.warpAffine', '평행 이동(아핀 행렬 적용)'],
+    ['Rotation', 'cv2.getRotationMatrix2D / cv2.warpAffine', '회전'],
+    ['Scale', 'cv2.resize', '크기 변경'],
+    ['Affine', 'cv2.getAffineTransform / cv2.warpAffine', '회전+이동+스케일'],
+    ['Similarity', 'warpAffine(유사변환 행렬)', '비율 유지 변환'],
+    ['Projective', 'cv2.getPerspectiveTransform / cv2.warpPerspective', '원근 보정'],
+    ['Rigid (Euclidean)', 'warpAffine(회전+이동만)', '회전+이동만'],
+  ]],
+  [9, 'Interpolation & Resampling', [
+    ['Nearest', 'cv2.resize(INTER_NEAREST)', '빠름, 품질 낮음'],
+    ['Bilinear', 'cv2.resize(INTER_LINEAR)', '기본'],
+    ['Bicubic', 'cv2.resize(INTER_CUBIC)', '고품질'],
+    ['Area', 'cv2.resize(INTER_AREA)', '축소 시 최적'],
+  ]],
+  [10, 'Frequency Domain', [
+    ['FFT', 'np.fft.fft2 / np.fft.fftshift', '주파수 분석'],
+    ['DCT', 'cv2.dct', '압축(JPEG)'],
+    ['High-pass', 'FFT 후 마스크링', '엣지 강조'],
+    ['Low-pass', 'FFT 후 마스크링', '블러'],
+  ]],
+  [11, 'Color Space Processing', [
+    ['RGB ↔ Gray', 'cv2.cvtColor', '기본 변환'],
+    ['HSV', 'cv2.cvtColor(BGR2HSV)', '색 기반 분할'],
+    ['Lab', 'cv2.cvtColor(BGR2Lab)', '조명 영향 최소'],
+    ['YCrCb', 'cv2.cvtColor(BGR2YCrCb)', '피부/객체 분리'],
+  ]],
+];
+
+// ═══════════════════════ 샘플 코드 (R09.py snippet_by_type) ═══════════════════════
+const READ = (flag) => String.raw`img = imread_unicode(r"{IMAGE_PATH}"${flag ? ', cv2.IMREAD_GRAYSCALE' : ''})
+if img is None:
+    raise RuntimeError("이미지를 읽을 수 없습니다. 경로를 확인하세요.")
+`;
+const S = (imports, gray, body) => `${imports}\n\n${READ(gray)}\n${body}`;
+const CV = 'import cv2', CVNP = 'import cv2\nimport numpy as np';
+
+const SNIPPETS = {
+  'Gaussian filter': S(CV, true, 'out = cv2.GaussianBlur(img, (5, 5), 0)\nshow_result(out)\n'),
+  'Median filter': S(CV, true, 'out = cv2.medianBlur(img, 5)\nshow_result(out)\n'),
+  'Bilateral filter': S(CV, false, 'out = cv2.bilateralFilter(img, d=9, sigmaColor=75, sigmaSpace=75)\nshow_result(out)\n'),
+  'Global Threshold': S(CV, true, '_, binary = cv2.threshold(img, 127, 255, cv2.THRESH_BINARY)\nshow_result(binary)\n'),
+  'Adaptive Threshold': S(CV, true, `binary = cv2.adaptiveThreshold(
+    img, 255,
+    cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+    cv2.THRESH_BINARY,
+    31, 10
+)
+show_result(binary)
+`),
+  'Otsu Threshold': S(CV, true, '_, binary = cv2.threshold(img, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)\nshow_result(binary)\n'),
+  'Canny': S(CV, true, 'blur = cv2.GaussianBlur(img, (5, 5), 0)\nedges = cv2.Canny(blur, 70, 180)\nshow_result(edges)\n'),
+  'Sobel': S(CVNP, true, `sx = cv2.Sobel(img, cv2.CV_32F, 1, 0, ksize=3)
+sy = cv2.Sobel(img, cv2.CV_32F, 0, 1, ksize=3)
+
+absx = cv2.convertScaleAbs(sx)
+absy = cv2.convertScaleAbs(sy)
+grad = cv2.addWeighted(absx, 0.5, absy, 0.5, 0)
+
+show_result(grad)
+`),
+  'Laplacian': S(CV, true, 'lap = cv2.Laplacian(img, cv2.CV_16S, ksize=3)\nout = cv2.convertScaleAbs(lap)\nshow_result(out)\n'),
+  'Contours': S(CV, false, `gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+_, binary = cv2.threshold(gray, 127, 255, cv2.THRESH_BINARY)
+
+contours, _ = cv2.findContours(binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+cv2.drawContours(img, contours, -1, (0, 0, 255), 2)
+
+show_result(img)
+`),
+  'Hough Line': S(CVNP, false, `gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+edges = cv2.Canny(gray, 50, 150)
+
+lines = cv2.HoughLinesP(edges, 1, np.pi/180, 80, minLineLength=50, maxLineGap=10)
+if lines is not None:
+    for x1, y1, x2, y2 in lines[:,0,:]:
+        cv2.line(img, (x1,y1), (x2,y2), (0,0,255), 2)
+
+show_result(img)
+`),
+  'Hough Circle': S(CVNP, false, `gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+gray = cv2.GaussianBlur(gray, (9, 9), 2)
+
+circles = cv2.HoughCircles(gray, cv2.HOUGH_GRADIENT, dp=1.2, minDist=30,
+                           param1=100, param2=30, minRadius=5, maxRadius=200)
+
+if circles is not None:
+    circles = np.uint16(np.around(circles))
+    for x, y, r in circles[0, :]:
+        cv2.circle(img, (int(x), int(y)), int(r), (0, 255, 0), 2)
+
+show_result(img)
+`),
+  'ORB': S(CV, true, `orb = cv2.ORB_create()
+kps, des = orb.detectAndCompute(img, None)
+
+out = cv2.drawKeypoints(img, kps, None, flags=cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
+show_result(out)
+`),
+  'SIFT': S(CV, true, `sift = cv2.SIFT_create()
+kps, des = sift.detectAndCompute(img, None)
+
+out = cv2.drawKeypoints(img, kps, None, flags=cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
+show_result(out)
+`),
+  'Harris Corner': S(CVNP, false, `gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+gray_f = np.float32(gray)
+
+dst = cv2.cornerHarris(gray_f, blockSize=2, ksize=3, k=0.04)
+dst = cv2.dilate(dst, None)
+
+img[dst > 0.01 * dst.max()] = [0, 0, 255]
+show_result(img)
+`),
+  'Dilation (팽창)': S(CVNP, true, 'kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))\nout = cv2.dilate(img, kernel, iterations=1)\nshow_result(out)\n'),
+  'Erosion (침식)': S(CVNP, true, 'kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))\nout = cv2.erode(img, kernel, iterations=1)\nshow_result(out)\n'),
+  'convertScaleAbs': S(CVNP, true, 'sx = cv2.Sobel(img, cv2.CV_32F, 1, 0, ksize=3)\nout = cv2.convertScaleAbs(sx)\nshow_result(out)\n'),
+  'CLAHE': S(CV, true, 'clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))\nout = clahe.apply(img)\nshow_result(out)\n'),
+  'Histogram equalization': S(CV, true, 'out = cv2.equalizeHist(img)\nshow_result(out)\n'),
+  'RGB ↔ Gray': S(CV, false, 'gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)\nshow_result(gray)\n'),
+  'HSV': S(CV, false, 'hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)\nshow_result(hsv)\n'),
+  'Projective': S(CVNP, false, `h, w = img.shape[:2]
+src = np.float32([[0,0],[w-1,0],[w-1,h-1],[0,h-1]])
+dst = np.float32([[20,20],[w-40,10],[w-20,h-30],[30,h-10]])
+
+M = cv2.getPerspectiveTransform(src, dst)
+out = cv2.warpPerspective(img, M, (w, h))
+show_result(out)
+`),
+  'Gamma correction': S(CVNP, false, `gamma = 1.8
+inv = 1.0 / gamma
+table = (np.arange(256) / 255.0) ** inv
+table = np.clip(table * 255.0, 0, 255).astype(np.uint8)
+
+out = cv2.LUT(img, table)
+show_result(out)
+`),
+  'Averaging': S(CV, true, 'blur = cv2.GaussianBlur(img, (9, 9), 0)\nout = cv2.addWeighted(img, 0.7, blur, 0.3, 0)\nshow_result(out)\n'),
+  'Normalization': S(CVNP, true, 'out = cv2.normalize(img, None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)\nshow_result(out)\n'),
+  'Logical Ops': S(CVNP, false, `h, w = img.shape[:2]
+mask = np.zeros((h, w), dtype=np.uint8)
+cv2.circle(mask, (w//2, h//2), min(h, w)//4, 255, -1)
+
+out = cv2.bitwise_and(img, img, mask=mask)
+show_result(out)
+`),
+  'Convolution': S(CVNP, true, `kernel = np.array([[0,-1,0],
+                   [-1, 5,-1],
+                   [0,-1,0]], dtype=np.float32)
+
+out = cv2.filter2D(img, -1, kernel)
+show_result(out)
+`),
+  'Average filter': S(CV, true, 'out = cv2.blur(img, (7, 7))\nshow_result(out)\n'),
+  'Non-local Means': S(CV, false, `if len(img.shape) == 3:
+    out = cv2.fastNlMeansDenoisingColored(img, None, 10, 10, 7, 21)
+else:
+    out = cv2.fastNlMeansDenoising(img, None, 10, 7, 21)
+
+show_result(out)
+`),
+  'Prewitt': S(CVNP, true, `kx = np.array([[-1,0,1],
+               [-1,0,1],
+               [-1,0,1]], dtype=np.float32)
+ky = np.array([[-1,-1,-1],
+               [ 0, 0, 0],
+               [ 1, 1, 1]], dtype=np.float32)
+
+gx = cv2.filter2D(img, cv2.CV_32F, kx)
+gy = cv2.filter2D(img, cv2.CV_32F, ky)
+
+mag = cv2.magnitude(gx, gy)
+out = cv2.convertScaleAbs(mag)
+show_result(out)
+`),
+  'Scharr': S(CVNP, true, `sx = cv2.Scharr(img, cv2.CV_32F, 1, 0)
+sy = cv2.Scharr(img, cv2.CV_32F, 0, 1)
+
+mag = cv2.magnitude(sx, sy)
+out = cv2.convertScaleAbs(mag)
+show_result(out)
+`),
+  'Robert': S(CVNP, true, `kx = np.array([[1,0],
+               [0,-1]], dtype=np.float32)
+ky = np.array([[0,1],
+               [-1,0]], dtype=np.float32)
+
+gx = cv2.filter2D(img, cv2.CV_32F, kx)
+gy = cv2.filter2D(img, cv2.CV_32F, ky)
+
+mag = cv2.magnitude(gx, gy)
+out = cv2.convertScaleAbs(mag)
+show_result(out)
+`),
+  'Opening (Erosion → Dilation)': S(CVNP, true, `_, bw = cv2.threshold(img, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
+out = cv2.morphologyEx(bw, cv2.MORPH_OPEN, kernel, iterations=1)
+show_result(out)
+`),
+  'Closing (Dilation → Erosion)': S(CVNP, true, `_, bw = cv2.threshold(img, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5))
+out = cv2.morphologyEx(bw, cv2.MORPH_CLOSE, kernel, iterations=1)
+show_result(out)
+`),
+  'Morph Gradient': S(CVNP, true, 'kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))\nout = cv2.morphologyEx(img, cv2.MORPH_GRADIENT, kernel)\nshow_result(out)\n'),
+  'Skeletonization': S(CVNP, true, `_, bw = cv2.threshold(img, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+
+skel = np.zeros_like(bw)
+kernel = cv2.getStructuringElement(cv2.MORPH_CROSS, (3, 3))
+
+temp = bw.copy()
+while True:
+    eroded = cv2.erode(temp, kernel)
+    opened = cv2.dilate(eroded, kernel)
+    residue = cv2.subtract(temp, opened)
+    skel = cv2.bitwise_or(skel, residue)
+    temp = eroded
+    if cv2.countNonZero(temp) == 0:
+        break
+
+show_result(skel)
+`),
+  'Distance transform': S(CVNP, true, `_, bw = cv2.threshold(img, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+
+dist = cv2.distanceTransform(bw, cv2.DIST_L2, 3)
+out = cv2.normalize(dist, None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
+show_result(out)
+`),
+  'Watershed': S(CVNP, false, `gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+_, bw = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+
+kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3,3))
+opening = cv2.morphologyEx(bw, cv2.MORPH_OPEN, kernel, iterations=2)
+
+sure_bg = cv2.dilate(opening, kernel, iterations=3)
+dist = cv2.distanceTransform(opening, cv2.DIST_L2, 5)
+_, sure_fg = cv2.threshold(dist, 0.4 * dist.max(), 255, 0)
+sure_fg = sure_fg.astype(np.uint8)
+unknown = cv2.subtract(sure_bg, sure_fg)
+
+_, markers = cv2.connectedComponents(sure_fg)
+markers = markers + 1
+markers[unknown == 255] = 0
+
+markers = cv2.watershed(img, markers)
+
+out = img.copy()
+out[markers == -1] = [0, 0, 255]
+show_result(out)
+`),
+  'Connected Components': S(CVNP, true, `_, bw = cv2.threshold(img, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+
+num, labels, stats, centroids = cv2.connectedComponentsWithStats(bw, connectivity=8)
+
+h, w = bw.shape
+out = np.zeros((h, w, 3), dtype=np.uint8)
+for i in range(1, num):
+    out[labels == i] = (0, 255, 0)
+
+show_result(out)
+`),
+  'Grabcut': S(CVNP, false, `h, w = img.shape[:2]
+rect = (w//8, h//8, w*3//4, h*3//4)
+
+mask = np.zeros((h, w), np.uint8)
+bgdModel = np.zeros((1, 65), np.float64)
+fgdModel = np.zeros((1, 65), np.float64)
+
+cv2.grabCut(img, mask, rect, bgdModel, fgdModel, 5, cv2.GC_INIT_WITH_RECT)
+
+fg = np.where((mask == 1) | (mask == 3), 1, 0).astype(np.uint8)
+out = img * fg[:, :, None]
+show_result(out)
+`),
+  'Shi-Tomasi': S(CVNP, false, `gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+
+corners = cv2.goodFeaturesToTrack(gray, 200, 0.01, 10)
+out = img.copy()
+if corners is not None:
+    corners = np.int32(corners)
+    for x, y in corners.reshape(-1, 2):
+        cv2.circle(out, (int(x), int(y)), 3, (0, 0, 255), -1)
+
+show_result(out)
+`),
+  'FAST': S(CV, false, `gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+
+fast = cv2.FastFeatureDetector_create(threshold=20, nonmaxSuppression=True)
+kps = fast.detect(gray, None)
+
+out = cv2.drawKeypoints(img, kps, None, flags=cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
+show_result(out)
+`),
+  'SURF': S(CV, true, `if not hasattr(cv2, "xfeatures2d"):
+    raise RuntimeError("cv2.xfeatures2d가 없습니다. opencv-contrib-python 설치가 필요합니다.")
+
+surf = cv2.xfeatures2d.SURF_create(hessianThreshold=400)
+kps, des = surf.detectAndCompute(img, None)
+
+out = cv2.drawKeypoints(img, kps, None, flags=cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
+show_result(out)
+`),
+  'BRIEF': S(CV, true, `if not hasattr(cv2, "xfeatures2d"):
+    raise RuntimeError("cv2.xfeatures2d가 없습니다. opencv-contrib-python 설치가 필요합니다.")
+
+star = cv2.xfeatures2d.StarDetector_create()
+kps = star.detect(img, None)
+
+brief = cv2.xfeatures2d.BriefDescriptorExtractor_create()
+kps, des = brief.compute(img, kps)
+
+out = cv2.drawKeypoints(img, kps, None, flags=cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
+show_result(out)
+`),
+  'Convex Hull': S(CVNP, false, `gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+_, bw = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+
+contours, _ = cv2.findContours(bw, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+out = img.copy()
+for cnt in contours:
+    if cv2.contourArea(cnt) < 200:
+        continue
+    hull = cv2.convexHull(cnt)
+    cv2.polylines(out, [hull], True, (0, 0, 255), 2)
+
+show_result(out)
+`),
+  'Bounding Box': S(CVNP, false, `gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+_, bw = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+
+contours, _ = cv2.findContours(bw, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+out = img.copy()
+for cnt in contours:
+    if cv2.contourArea(cnt) < 200:
+        continue
+
+    x, y, w, h = cv2.boundingRect(cnt)
+    cv2.rectangle(out, (x, y), (x+w, y+h), (0, 255, 0), 2)
+
+    rect = cv2.minAreaRect(cnt)
+    box = cv2.boxPoints(rect)
+    box = np.int32(box)
+    cv2.polylines(out, [box], True, (0, 0, 255), 2)
+
+show_result(out)
+`),
+  'Translation': S(CVNP, false, `h, w = img.shape[:2]
+dx, dy = 50, 30
+M = np.float32([[1, 0, dx],
+                [0, 1, dy]])
+out = cv2.warpAffine(img, M, (w, h))
+show_result(out)
+`),
+  'Rotation': S(CV, false, `h, w = img.shape[:2]
+center = (w//2, h//2)
+M = cv2.getRotationMatrix2D(center, angle=25, scale=1.0)
+out = cv2.warpAffine(img, M, (w, h))
+show_result(out)
+`),
+  'Scale': S(CV, false, 'out = cv2.resize(img, None, fx=1.5, fy=1.5, interpolation=cv2.INTER_CUBIC)\nshow_result(out)\n'),
+  'Affine': S(CVNP, false, `h, w = img.shape[:2]
+src = np.float32([[0,0], [w-1,0], [0,h-1]])
+dst = np.float32([[20,30], [w-40,10], [40,h-30]])
+
+M = cv2.getAffineTransform(src, dst)
+out = cv2.warpAffine(img, M, (w, h))
+show_result(out)
+`),
+  'Similarity': S(CV, false, `h, w = img.shape[:2]
+center = (w//2, h//2)
+
+M = cv2.getRotationMatrix2D(center, angle=20, scale=0.9)
+M[0,2] += 30
+M[1,2] += 10
+
+out = cv2.warpAffine(img, M, (w, h))
+show_result(out)
+`),
+  'Rigid (Euclidean)': S(CV, false, `h, w = img.shape[:2]
+center = (w//2, h//2)
+
+M = cv2.getRotationMatrix2D(center, angle=15, scale=1.0)
+M[0,2] += 40
+M[1,2] += -10
+
+out = cv2.warpAffine(img, M, (w, h))
+show_result(out)
+`),
+  'Nearest': S(CV, false, 'out = cv2.resize(img, None, fx=2.0, fy=2.0, interpolation=cv2.INTER_NEAREST)\nshow_result(out)\n'),
+  'Bilinear': S(CV, false, 'out = cv2.resize(img, None, fx=2.0, fy=2.0, interpolation=cv2.INTER_LINEAR)\nshow_result(out)\n'),
+  'Bicubic': S(CV, false, 'out = cv2.resize(img, None, fx=2.0, fy=2.0, interpolation=cv2.INTER_CUBIC)\nshow_result(out)\n'),
+  'Area': S(CV, false, 'out = cv2.resize(img, None, fx=0.5, fy=0.5, interpolation=cv2.INTER_AREA)\nshow_result(out)\n'),
+  'FFT': S(CVNP, true, `f = np.fft.fft2(img)
+fshift = np.fft.fftshift(f)
+mag = np.log(np.abs(fshift) + 1.0)
+
+out = cv2.normalize(mag, None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
+show_result(out)
+`),
+  'DCT': S(CVNP, true, `img_f = np.float32(img) / 255.0
+# cv2.dct는 짝수 크기만 지원 → 홀수면 1픽셀 잘라냄
+img_f = img_f[:img_f.shape[0] // 2 * 2, :img_f.shape[1] // 2 * 2]
+dct = cv2.dct(img_f)
+
+mag = np.log(np.abs(dct) + 1e-6)
+out = cv2.normalize(mag, None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
+show_result(out)
+`),
+  'High-pass': S(CVNP, true, `h, w = img.shape
+f = np.fft.fft2(img)
+fshift = np.fft.fftshift(f)
+
+mask = np.ones((h, w), np.uint8)
+r = min(h, w) // 10
+cy, cx = h//2, w//2
+mask[cy-r:cy+r, cx-r:cx+r] = 0
+
+fshift_hp = fshift * mask
+img_back = np.fft.ifft2(np.fft.ifftshift(fshift_hp))
+img_back = np.abs(img_back)
+
+out = cv2.normalize(img_back, None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
+show_result(out)
+`),
+  'Low-pass': S(CVNP, true, `h, w = img.shape
+f = np.fft.fft2(img)
+fshift = np.fft.fftshift(f)
+
+mask = np.zeros((h, w), np.uint8)
+r = min(h, w) // 10
+cy, cx = h//2, w//2
+mask[cy-r:cy+r, cx-r:cx+r] = 1
+
+fshift_lp = fshift * mask
+img_back = np.fft.ifft2(np.fft.ifftshift(fshift_lp))
+img_back = np.abs(img_back)
+
+out = cv2.normalize(img_back, None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
+show_result(out)
+`),
+  'Lab': S(CV, false, 'lab = cv2.cvtColor(img, cv2.COLOR_BGR2Lab)\nshow_result(lab)\n'),
+  'YCrCb': S(CV, false, 'ycrcb = cv2.cvtColor(img, cv2.COLOR_BGR2YCrCb)\nshow_result(ycrcb)\n'),
+};
+
+// ═══════════════════════ 응용 필터 조합 (pipelines.ini 기본값) ═══════════════════════
+const DEFAULT_SCENARIOS = [
+  ['문서/명함 OCR(조명 균일)', '선명한 텍스트 이진화', 'GaussianBlur(3×3) → AdaptiveThreshold(Gaussian) → Opening → Closing'],
+  ['문서/명함+조명 불균일', '문서 테두리/텍스트 안정적 추출', 'Bilateral → AdaptiveThreshold → Closing → Canny(낮은 T) → Contour'],
+  ['RealSense/L515 PnP', '안정적인 엣지+Depth ROI', 'GaussianBlur(5×5) → Canny → Depth Mask → Closing'],
+  ['금속/PCB 고노이즈', '반사/노이즈 줄인 엣지', 'MedianBlur(5~7) → GaussianBlur(3×3) → Canny → Closing'],
+  ['흐린 이미지 Edge', '흐린 경계 보존', 'Unsharp Mask → GaussianBlur(3×3) → Canny'],
+  ['저조도/낮은 대비', '대비/밝기 향상+엣지 안정화', 'CLAHE → GaussianBlur → Canny'],
+  ['객체 분리/배경 제거', '깨끗한 객체 마스크', 'GaussianBlur(7×7) → Otsu Threshold → Closing → Largest Contour'],
+];
+const STORE_KEY = 'kong-ift-pipelines-v1';
+
+// ═══════════════════════ 공통 ═══════════════════════
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const nextFrame = () => new Promise(r => setTimeout(r, 30));
+
+function showMessage(title, text) {
+  $('msgTitle').textContent = title;
+  $('msgText').textContent = text;
+  $('msgDlg').showModal();
+}
+$('btnMsgOk').onclick = () => $('msgDlg').close();
+
+function drawImageData(canvas, emptyEl, imgData) {
+  canvas.width = imgData.width; canvas.height = imgData.height;
+  canvas.getContext('2d').putImageData(imgData, 0, 0);
+  emptyEl.hidden = true;
+}
+
+// ═══════════════════════ Pyodide (Python + OpenCV) — Web Worker ═══════════════════════
+// 무거운 OpenCV 연산이 화면을 멈추지 않도록 Python은 별도 스레드(Worker)에서 실행.
+// 요청은 Worker 안에서 하나씩 순서대로 처리되고, 오래 걸리면 '중지'로 Worker를 재시작.
+const WORKER_SRC = String.raw`
+importScripts('https://cdn.jsdelivr.net/pyodide/v0.26.4/full/pyodide.js');
+let py;
+const ready = (async () => {
+  py = await loadPyodide();
+  postMessage({ type: 'progress', text: 'OpenCV 패키지 로딩 중…' });
+  await py.loadPackage(['numpy', 'opencv-python']);
+})();
+
+function takeResult() {
+  const arr = py.globals.get('_take_result')();
+  if (!arr) return null;
+  const buf = arr.getBuffer('u8');
+  try {
+    const [h, w] = buf.shape;
+    return { w, h, data: buf.data.slice(0, w * h * 4) };
+  } finally {
+    buf.release(); arr.destroy();
+  }
+}
+
+async function handle(m) {
+  await ready;
+  const r = {};
+  switch (m.type) {
+    case 'init':
+      py.runPython(m.core);
+      py.FS.mkdirTree('/data');
+      r.version = 'Python ' + py.runPython('import sys; sys.version.split()[0]') + ' · OpenCV ' + py.runPython('cv2.__version__');
+      break;
+    case 'write':
+      py.FS.writeFile(m.path, m.bytes);
+      break;
+    case 'snippet': {
+      const env = py.globals.get('_make_env')();
+      try { await py.runPythonAsync(m.code, { globals: env }); }
+      finally { env.destroy(); }
+      r.image = takeResult();
+      break;
+    }
+    case 'chain':
+      r.info = JSON.parse(py.globals.get('_apply_chain')(m.path, m.steps, m.maxSide));
+      r.image = takeResult();
+      break;
+    case 'chainCode':
+      r.code = py.globals.get('_chain_code')(m.path, m.steps);
+      break;
+  }
+  return r;
+}
+
+let queue = Promise.resolve();
+onmessage = ({ data: m }) => {
+  queue = queue.then(async () => {
+    const t0 = performance.now();
+    try {
+      const r = await handle(m);
+      r.ms = performance.now() - t0;
+      postMessage({ id: m.id, ok: true, ...r }, r.image ? [r.image.data.buffer] : []);
+    } catch (e) {
+      postMessage({ id: m.id, ok: false, error: String((e && e.message) || e) });
+    }
+  });
+};
+`;
+
+let worker = null, pyReady = null, pyLoaded = false, callSeq = 0;
+const pending = new Map();      // id → { resolve, reject, type, t0 }
+const virtualFiles = new Map(); // Worker 재시작 시 다시 기록할 파일
+const LONG_TYPES = new Set(['snippet', 'chain']);
+
+function startWorker() {
+  worker?.terminate();
+  for (const p of pending.values()) p.reject(Object.assign(new Error('사용자가 중지했습니다.'), { stopped: true }));
+  pending.clear();
+  pyLoaded = false;
+  const st = $('pyStatus');
+  st.textContent = 'Python/OpenCV 로딩 중…'; st.className = '';
+  worker = new Worker(URL.createObjectURL(new Blob([WORKER_SRC], { type: 'text/javascript' })));
+  worker.onmessage = ({ data: m }) => {
+    if (m.type === 'progress') { st.textContent = m.text; return; }
+    const p = pending.get(m.id);
+    if (!p) return;
+    pending.delete(m.id);
+    updateBusy();
+    if (m.ok) {
+      if (m.image) m.image = new ImageData(new Uint8ClampedArray(m.image.data.buffer), m.image.w, m.image.h);
+      p.resolve(m);
+    } else p.reject(new Error(m.error));
+  };
+  worker.onerror = e => {
+    console.error(e);
+    st.textContent = 'Python/OpenCV 로딩 실패 (인터넷 연결 확인)'; st.className = 'err';
+    for (const p of pending.values()) p.reject(new Error('Python/OpenCV를 불러오지 못했습니다.'));
+    pending.clear(); updateBusy();
+  };
+  pyReady = pyCall('init', { core: $('py-core').textContent }).then(r => {
+    pyLoaded = true;
+    st.textContent = r.version + ' 준비됨'; st.className = 'ok';
+  });
+  pyReady.catch(e => { if (!e.stopped) { st.textContent = 'Python/OpenCV 로딩 실패 (인터넷 연결 확인)'; st.className = 'err'; } });
+  for (const [path, bytes] of virtualFiles) pyCall('write', { path, bytes }).catch(() => {});
+}
+
+function pyCall(type, payload = {}) {
+  return new Promise((resolve, reject) => {
+    const id = ++callSeq;
+    pending.set(id, { resolve, reject, type, t0: performance.now() });
+    worker.postMessage({ id, type, ...payload });
+    updateBusy();
+  });
+}
+
+function writeVirtualFile(path, bytes) {
+  virtualFiles.set(path, bytes);
+  pyCall('write', { path, bytes }).catch(() => {});
+}
+
+// 오래 걸리는 작업 표시 + 중지
+function updateBusy() {
+  const long = [...pending.values()].filter(p => LONG_TYPES.has(p.type));
+  const box = $('busyBox');
+  if (!long.length || !pyLoaded) { box.hidden = true; return; }
+  const sec = (performance.now() - Math.min(...long.map(p => p.t0))) / 1000;
+  box.hidden = sec < 0.8;
+  $('busyTime').textContent = sec.toFixed(1) + '초';
+}
+setInterval(updateBusy, 200);
+$('btnStop').onclick = () => {
+  startWorker();
+  setRunMsg('중지했습니다. (Python/OpenCV 다시 준비 중)', 'err');
+  setBasicStatus('중지했습니다. 파라미터를 바꾸면 다시 실행됩니다.', 'err');
+};
+
+startWorker();
+
+/** Python 예외 → 메시지 (R09.py run_snippet의 메시지 규칙과 동일) */
+function pyErrorMessage(e) {
+  const msg = String(e.message || e);
+  if (msg.includes('!_src.empty()') || msg.includes('이미지를 읽을 수 없습니다')) return '이미지 경로를 확인해 주세요.';
+  const lines = msg.trim().split('\n');
+  return lines[lines.length - 1];
+}
+
+// ═══════════════════════ 현재 이미지 ═══════════════════════
+let CURRENT_IMAGE_PATH = null; // 가상 파일시스템 경로 (/data/파일명)
+
+async function useImageFile(file) {
+  if (!file || !file.type.startsWith('image/')) { showMessage('경고', '이미지 파일을 선택해 주세요.'); return; }
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  const path = '/data/' + file.name.replace(/[\\/]/g, '_');
+  writeVirtualFile(path, bytes);
+  setCurrentImage(path, await createImageBitmap(file));
+}
+
+/** 결과와 나란히 비교할 원본 이미지 */
+function drawSourcePreview(bitmap) {
+  const c = $('cvSrcPreview');
+  c.width = bitmap.width; c.height = bitmap.height;
+  c.getContext('2d').drawImage(bitmap, 0, 0);
+  $('emptySrcPreview').hidden = true;
+}
+
+function setCurrentImage(path, bitmap) {
+  CURRENT_IMAGE_PATH = path;
+  document.querySelectorAll('.cur-img-name').forEach(el => {
+    el.textContent = path.split('/').pop();
+    el.title = `현재 입력 이미지: ${path} (${bitmap.width}×${bitmap.height})`;
+  });
+  drawSourcePreview(bitmap);
+  basicSetSource(bitmap);
+  // 치트시트에 선택된 코드가 있으면 새 경로로 다시 채움
+  if (selectedType) { $('snipCode').value = buildCodeForType(selectedType); scheduleAutoRun(); }
+}
+
+async function makeSampleImage() {
+  const c = new OffscreenCanvas(800, 600);
+  const g = c.getContext('2d');
+  const grad = g.createLinearGradient(0, 0, 800, 560);
+  grad.addColorStop(0, 'rgb(25,50,120)'); grad.addColorStop(1, 'rgb(245,190,80)');
+  g.fillStyle = grad; g.fillRect(0, 0, 800, 600);
+  g.fillStyle = 'crimson'; g.beginPath(); g.arc(160, 150, 100, 0, Math.PI * 2); g.fill();
+  g.fillStyle = 'forestgreen'; g.fillRect(320, 70, 170, 170);
+  g.fillStyle = 'whitesmoke'; g.beginPath(); g.moveTo(650, 50); g.lineTo(760, 240); g.lineTo(540, 240); g.fill();
+  for (let i = 0; i < 10; i++)
+    for (let j = 0; j < 10; j++) { g.fillStyle = (i + j) % 2 ? '#fff' : '#000'; g.fillRect(50 + i * 18, 340 + j * 18, 18, 18); }
+  g.strokeStyle = '#000'; g.lineWidth = 2;
+  for (let r = 8; r <= 130; r += 9) { g.beginPath(); g.arc(620, 440, r, 0, Math.PI * 2); g.stroke(); }
+  for (let i = 0; i < 16; i++) { const v = i * 17; g.fillStyle = `rgb(${v},${v},${v})`; g.fillRect(260 + i * 16, 520, 16, 50); }
+  g.font = 'bold 40px "Malgun Gothic", sans-serif'; g.textBaseline = 'top';
+  g.fillStyle = '#000'; g.fillText('이미지 필터 TEST', 252, 266);
+  g.fillStyle = '#fff'; g.fillText('이미지 필터 TEST', 248, 262);
+  const blob = await c.convertToBlob({ type: 'image/png' });
+  return new File([blob], 'sample.png', { type: 'image/png' });
+}
+
+// ═══════════════════════ 이미지 열기 ═══════════════════════
+$('fileInput').onchange = e => { useImageFile(e.target.files[0]); e.target.value = ''; };
+
+// 창 어디든 이미지를 끌어다 놓으면 열기
+addEventListener('dragover', e => e.preventDefault());
+addEventListener('drop', e => {
+  e.preventDefault();
+  const f = e.dataTransfer.files[0];
+  if (f) useImageFile(f);
+});
+
+// ═══════════════════════ 치트시트 ═══════════════════════
+let selectedType = null;
+
+function buildCodeForType(typeName) {
+  const imgPath = CURRENT_IMAGE_PATH || '/data/sample.png';
+  const tpl = SNIPPETS[typeName];
+  if (!tpl) return `import cv2\n\n# 선택 항목: ${typeName}\n# 이 항목에 대한 샘플 코드는 아직 매핑되어 있지 않습니다.\n`;
+  return tpl.replaceAll('{IMAGE_PATH}', imgPath);
+}
+
+const taxBody = $('taxTable').tBodies[0];
+taxBody.innerHTML = TAXONOMY.flatMap(([no, group, items]) =>
+  items.map(([type, fn, desc], i) =>
+    `<tr tabindex="-1" data-type="${esc(type)}"${i === items.length - 1 ? ' class="last"' : ''}>` +
+    (i ? '' : `<td class="no" rowspan="${items.length}">${no}</td><td class="grp" rowspan="${items.length}">${esc(group)}</td>`) +
+    `<td>${esc(type)}</td><td>${esc(fn)}</td><td>${esc(desc)}</td></tr>`)
+).join('');
+const taxRows = [...taxBody.rows];
+
+function selectTaxRow(tr) {
+  taxRows.forEach(r => r.classList.toggle('sel', r === tr));
+  tr.tabIndex = 0; tr.focus({ preventScroll: true });
+  tr.scrollIntoView({ block: 'nearest' });
+  selectedType = tr.dataset.type;
+  $('snipCode').value = buildCodeForType(selectedType);
+  scheduleAutoRun();
+}
+
+// 행을 고르면 미리보기를 자동 갱신 (↑↓로 빠르게 넘길 때는 멈춘 행만 실행)
+let autoRunTimer = 0;
+function scheduleAutoRun() {
+  clearTimeout(autoRunTimer);
+  setRunMsg(pyLoaded ? '실행 대기…' : 'Python/OpenCV 로딩 대기 중…');
+  autoRunTimer = setTimeout(runSnippet, 150);
+}
+taxBody.addEventListener('click', e => { const tr = e.target.closest('tr'); if (tr) selectTaxRow(tr); });
+taxBody.addEventListener('keydown', e => {
+  const i = taxRows.indexOf(document.activeElement);
+  if (i < 0) return;
+  if (e.key === 'ArrowDown' && i < taxRows.length - 1) { e.preventDefault(); selectTaxRow(taxRows[i + 1]); }
+  if (e.key === 'ArrowUp' && i > 0) { e.preventDefault(); selectTaxRow(taxRows[i - 1]); }
+  if (e.key === 'Enter') { e.preventDefault(); runSnippet(); }
+});
+taxRows[0].tabIndex = 0;
+
+function setRunMsg(text, cls = '') { const m = $('runMsg'); m.textContent = text; m.className = cls; }
+
+// 실행 중에 또 요청되면 끝난 뒤 최신 코드로 한 번 더 실행
+let snippetRunning = false, snippetRerun = false;
+async function runSnippet() {
+  if (snippetRunning) { snippetRerun = true; return; }
+  snippetRunning = true;
+  try {
+    do { snippetRerun = false; await runSnippetOnce(); } while (snippetRerun);
+  } finally {
+    snippetRunning = false;
+  }
+}
+
+async function runSnippetOnce() {
+  const code = $('snipCode').value;
+  if (!code.trim()) { setRunMsg('실행할 코드가 없습니다. 왼쪽에서 연산을 선택하세요.', 'err'); return; }
+  const btn = $('btnRun');
+  btn.disabled = true;
+  setRunMsg(pyLoaded ? '실행 중…' : 'Python/OpenCV 로딩 대기 중…');
+  try {
+    await pyReady;
+    // 샘플 이미지가 아직 없으면 기본 경로(/data/sample.png)에 만들어 둠
+    if (!CURRENT_IMAGE_PATH && !virtualFiles.has('/data/sample.png'))
+      writeVirtualFile('/data/sample.png', new Uint8Array(await (await makeSampleImage()).arrayBuffer()));
+    const { image: res, ms } = await pyCall('snippet', { code });
+    if (res) {
+      drawImageData($('cvPreview'), $('emptyPreview'), res);
+      $('resInfo').textContent = `${res.width}×${res.height}`;
+      setRunMsg(`실행 완료 · ${res.width}×${res.height} · ${ms.toFixed(0)} ms`, 'ok');
+    } else {
+      setRunMsg('실행 완료 (show_result()가 호출되지 않아 표시할 결과가 없습니다)', 'ok');
+    }
+  } catch (e) {
+    if (e.stopped) return;
+    console.error(e);
+    setRunMsg('코드 실행 에러: ' + (pyLoaded ? pyErrorMessage(e) : 'Python/OpenCV를 불러오지 못했습니다.'), 'err');
+  } finally {
+    btn.disabled = false;
+  }
+}
+$('btnRun').onclick = runSnippet;
+$('btnChangeImg').onclick = () => $('fileInput').click(); // 바뀐 이미지로 선택된 코드를 다시 실행 (setCurrentImage)
+
+// 이미지를 고르기 전에는 기본 샘플을 원본 비교 칸에 표시
+// 이미지를 고르기 전에는 기본 샘플(/data/sample.png)을 두 탭의 원본으로 사용
+makeSampleImage().then(async file => {
+  writeVirtualFile('/data/sample.png', new Uint8Array(await file.arrayBuffer()));
+  const bmp = await createImageBitmap(file);
+  if (!CURRENT_IMAGE_PATH) { drawSourcePreview(bmp); basicSetSource(bmp); }
+});
+
+// 응용 필터 조합 정보: 버튼으로 여는 팝업 (바깥 클릭·Esc·✕로 닫기)
+const scenDlg = $('scenDlg');
+$('btnScen').onclick = () => scenDlg.showModal();
+$('btnScenClose').onclick = () => scenDlg.close();
+scenDlg.addEventListener('click', e => {
+  if (e.target !== scenDlg) return;
+  const r = scenDlg.getBoundingClientRect();
+  if (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) scenDlg.close();
+});
+$('snipCode').addEventListener('keydown', e => {
+  if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); runSnippet(); }
+  if (e.key === 'Tab' && !e.shiftKey) { // 탭 키 → 공백 4칸
+    e.preventDefault();
+    const t = e.target, s = t.selectionStart;
+    t.setRangeText('    ', s, t.selectionEnd, 'end');
+  }
+});
+
+// ═══════════════════════ 응용 필터 조합 (ini 관리) ═══════════════════════
+let scenarios = loadScenarios();
+let selectedScen = -1;
+
+function loadScenarios() {
+  try {
+    const s = JSON.parse(localStorage.getItem(STORE_KEY));
+    if (Array.isArray(s) && s.length) return s;
+  } catch {}
+  return DEFAULT_SCENARIOS.map(r => [...r]);
+}
+function saveScenarios() { try { localStorage.setItem(STORE_KEY, JSON.stringify(scenarios)); } catch {} }
+
+function refreshScenTable() {
+  $('scenTable').tBodies[0].innerHTML = scenarios.map(([sc, goal, pipe], i) =>
+    `<tr data-i="${i}" class="${i === selectedScen ? 'sel' : ''}"><td>${esc(sc)}</td><td>${esc(goal)}</td><td>${esc(pipe)}</td></tr>`).join('');
+  $('btnDelScen').disabled = selectedScen < 0;
+}
+$('scenTable').tBodies[0].addEventListener('click', e => {
+  const tr = e.target.closest('tr');
+  if (!tr) return;
+  selectedScen = +tr.dataset.i === selectedScen ? -1 : +tr.dataset.i;
+  refreshScenTable();
+});
+refreshScenTable();
+
+$('btnAddScen').onclick = () => { $('addForm').reset(); $('addDlg').showModal(); $('fScen').focus(); };
+$('btnAddCancel').onclick = () => $('addDlg').close();
+$('btnAddSave').onclick = () => {
+  const sc = $('fScen').value.trim(), goal = $('fGoal').value.trim(), pipe = $('fPipe').value.trim();
+  if (!sc || !goal || !pipe) { showMessage('입력 필요', '모든 항목(상황/목표/파이프라인)을 입력해 주세요.'); return; }
+  scenarios.push([sc, goal, pipe]);
+  saveScenarios(); refreshScenTable();
+  $('addDlg').close();
+};
+$('addForm').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); $('btnAddSave').click(); } });
+
+$('btnDelScen').onclick = () => {
+  if (selectedScen < 0) return;
+  if (!confirm(`'${scenarios[selectedScen][0]}' 항목을 삭제할까요?`)) return;
+  scenarios.splice(selectedScen, 1);
+  selectedScen = -1;
+  saveScenarios(); refreshScenTable();
+};
+
+// pipelines.ini 내보내기 (R09.py configparser 형식)
+$('btnIniExport').onclick = () => {
+  const lines = ['[meta]', 'version = 1', ''];
+  scenarios.forEach(([sc, goal, pipe], i) => {
+    lines.push(`[pipeline_${String(i + 1).padStart(3, '0')}]`, `scenario = ${sc}`, `goal = ${goal}`, `pipeline = ${pipe}`, '');
+  });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([lines.join('\r\n')], { type: 'text/plain;charset=utf-8' }));
+  a.download = 'pipelines.ini';
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+};
+
+// pipelines.ini 불러오기: [pipeline_NNN] 형식과 [pipelines] item_N = 상황|목표|파이프라인 형식 모두 지원
+$('btnIniImport').onclick = () => $('iniInput').click();
+$('iniInput').onchange = async e => {
+  const f = e.target.files[0];
+  e.target.value = '';
+  if (!f) return;
+  const items = parseIni(await f.text());
+  if (!items.length) { showMessage('INI 불러오기', '불러올 필터 조합 항목이 없습니다.'); return; }
+  const seen = new Set();
+  scenarios = items.filter(r => { const k = r.join('|'); if (seen.has(k)) return false; seen.add(k); return true; });
+  selectedScen = -1;
+  saveScenarios(); refreshScenTable();
+  showMessage('INI 불러오기', `${scenarios.length}개 항목을 불러왔습니다.`);
+};
+
+function parseIni(text) {
+  const out = [];
+  let sec = null, cur = {};
+  const flush = () => { if (sec && sec !== 'meta' && cur.scenario && cur.goal && cur.pipeline) out.push([cur.scenario, cur.goal, cur.pipeline]); };
+  for (const raw of text.replace(/^﻿/, '').split(/\r?\n/)) {
+    const line = raw.trim();
+    if (!line || line.startsWith(';') || line.startsWith('#')) continue;
+    const m = line.match(/^\[(.+)\]$/);
+    if (m) { flush(); sec = m[1].trim(); cur = {}; continue; }
+    const eq = line.search(/[=:]/);
+    if (eq < 0) continue;
+    const key = line.slice(0, eq).trim().toLowerCase(), val = line.slice(eq + 1).trim();
+    if (sec === 'pipelines' && val.includes('|')) {
+      const [a, b, ...c] = val.split('|').map(s => s.trim());
+      if (a && b && c.length) out.push([a, b, c.join('|')]);
+    } else cur[key] = val;
+  }
+  flush();
+  return out;
+}
+
+// ═══════════════════════ 탭 전환 ═══════════════════════
+const tabs = [...document.querySelectorAll('[role=tab]')];
+function selectTab(btn) {
+  tabs.forEach(t => {
+    const on = t === btn;
+    t.setAttribute('aria-selected', on);
+    $(t.getAttribute('aria-controls')).hidden = !on;
+  });
+  try { localStorage.setItem('kong-ift-tab2', btn.id); } catch {}
+  if (btn.id === 'tabbtn-basic') drawHistogram();
+  requestAnimationFrame(() => applyLayout()); // 숨겨져 있던 탭은 보일 때 너비를 다시 맞춤
+}
+tabs.forEach(t => t.onclick = () => selectTab(t));
+
+// ═══════════════════════ 이미지 수정: 필터 조합 ═══════════════════════
+const R = (k, label, min, max, step, def) => ({ k, label, type: 'range', min, max, step, def });
+const SEL = (k, label, options, def) => ({ k, label, type: 'select', options, def });
+const CHK = (k, label, def = false) => ({ k, label, type: 'check', def });
+const MORPH_P = () => [
+  R('ksize', '커널 크기', 1, 31, 1, 3), R('iter', '반복 횟수', 1, 10, 1, 1),
+  SEL('shape', '커널 모양', [['rect', '사각형'], ['ellipse', '타원'], ['cross', '십자']], 'rect'),
+];
+
+// op 이름은 Python _CODE 키와 같아야 함
+const BASIC_OPS = [
+  { cat: '색상 / 밝기', op: 'gray', name: '그레이스케일', desc: '컬러 → 흑백', params: [] },
+  { cat: '색상 / 밝기', op: 'bc', name: '밝기 / 대비', desc: '대비(배율)와 밝기 조절', params: [R('alpha', '대비', 0.1, 3, 0.05, 1.2), R('beta', '밝기', -100, 100, 1, 10)] },
+  { cat: '색상 / 밝기', op: 'gamma', name: '감마 보정', desc: '1보다 크면 어두운 곳이 밝아짐', params: [R('gamma', '감마', 0.1, 3, 0.05, 1.5)] },
+  { cat: '색상 / 밝기', op: 'equalize', name: '히스토그램 평활화', desc: '전체 대비 자동 향상', params: [] },
+  { cat: '색상 / 밝기', op: 'clahe', name: 'CLAHE', desc: '부분별 대비 향상 (과증폭 방지)', params: [R('clip', '대비 제한', 0.5, 10, 0.5, 2), R('tile', '타일 크기', 2, 16, 1, 8)] },
+  { cat: '색상 / 밝기', op: 'saturation', name: '채도', desc: '색을 더 진하게 / 연하게', params: [R('scale', '배율', 0, 3, 0.05, 1.3)] },
+  { cat: '색상 / 밝기', op: 'invert', name: '색 반전', desc: '네거티브 효과', params: [] },
+  { cat: '색상 / 밝기', op: 'posterize', name: '포스터화', desc: '색 단계 줄이기', params: [R('levels', '단계 수', 2, 16, 1, 4)] },
+  { cat: '노이즈 제거 / 블러', op: 'gaussian', name: '가우시안 블러', desc: '부드럽게, 자잘한 노이즈 제거', params: [R('ksize', '커널 크기', 1, 31, 2, 5), R('sigma', '시그마 (0=자동)', 0, 10, 0.1, 0)] },
+  { cat: '노이즈 제거 / 블러', op: 'median', name: '미디언 블러', desc: '점(소금·후추) 노이즈 제거', params: [R('ksize', '커널 크기', 1, 15, 2, 5)] },
+  { cat: '노이즈 제거 / 블러', op: 'box', name: '평균 블러', desc: '단순 평균으로 흐리게', params: [R('ksize', '커널 크기', 1, 31, 1, 5)] },
+  { cat: '노이즈 제거 / 블러', op: 'bilateral', name: '양방향 필터', desc: '윤곽은 살리고 노이즈만 제거', params: [R('d', '지름', 1, 15, 1, 9), R('sc', '색 범위', 1, 200, 1, 75), R('ss', '공간 범위', 1, 200, 1, 75)] },
+  { cat: '노이즈 제거 / 블러', op: 'nlmeans', name: 'Non-local Means', desc: '고급 노이즈 제거 (느림)', params: [R('h', '강도', 1, 30, 1, 10)] },
+  { cat: '선명하게', op: 'unsharp', name: '언샤프 마스크', desc: '윤곽을 또렷하게', params: [R('amount', '강도', 0, 3, 0.05, 1), R('sigma', '반경', 0.5, 10, 0.5, 3)] },
+  { cat: '엣지(윤곽) 검출', op: 'canny', name: 'Canny', desc: '가장 많이 쓰는 엣지 검출', params: [R('t1', '하한 임계값', 0, 255, 1, 80), R('t2', '상한 임계값', 0, 255, 1, 180)] },
+  { cat: '엣지(윤곽) 검출', op: 'sobel', name: 'Sobel', desc: '방향별 엣지 강도', params: [SEL('dir', '방향', [['xy', 'X + Y'], ['x', 'X (세로 경계)'], ['y', 'Y (가로 경계)']], 'xy'), SEL('ksize', '커널', [['1', '1'], ['3', '3'], ['5', '5'], ['7', '7']], '3')] },
+  { cat: '엣지(윤곽) 검출', op: 'laplacian', name: 'Laplacian', desc: '모든 방향 엣지 (2차 미분)', params: [R('ksize', '커널 크기', 1, 7, 2, 3)] },
+  { cat: '엣지(윤곽) 검출', op: 'scharr', name: 'Scharr', desc: 'Sobel보다 정밀', params: [] },
+  { cat: '이진화 (흑/백)', op: 'threshold', name: '고정 임계값', desc: '정한 밝기를 기준으로 흑/백', params: [R('thresh', '임계값', 0, 255, 1, 127), CHK('inv', '흑백 반전')] },
+  { cat: '이진화 (흑/백)', op: 'otsu', name: 'Otsu 자동 이진화', desc: '임계값을 자동으로 결정', params: [CHK('inv', '흑백 반전')] },
+  { cat: '이진화 (흑/백)', op: 'adaptive', name: '적응형 이진화', desc: '조명이 고르지 않은 문서용', params: [SEL('method', '방식', [['gaussian', 'Gaussian'], ['mean', 'Mean']], 'gaussian'), R('block', '블록 크기', 3, 99, 2, 31), R('C', '보정값 C', -20, 30, 1, 10), CHK('inv', '흑백 반전')] },
+  { cat: '형태학 (모폴로지)', op: 'dilate', name: '팽창', desc: '흰 영역을 넓힘', params: MORPH_P() },
+  { cat: '형태학 (모폴로지)', op: 'erode', name: '침식', desc: '흰 영역을 줄임', params: MORPH_P() },
+  { cat: '형태학 (모폴로지)', op: 'open', name: '열림', desc: '작은 흰 점 노이즈 제거', params: MORPH_P() },
+  { cat: '형태학 (모폴로지)', op: 'close', name: '닫힘', desc: '작은 구멍·끊김 메우기', params: MORPH_P() },
+  { cat: '형태학 (모폴로지)', op: 'gradient', name: '모폴로지 그래디언트', desc: '경계선만 남김', params: MORPH_P() },
+  { cat: '형태학 (모폴로지)', op: 'tophat', name: '탑햇', desc: '주변보다 밝은 작은 부분', params: MORPH_P() },
+  { cat: '형태학 (모폴로지)', op: 'blackhat', name: '블랙햇', desc: '주변보다 어두운 작은 부분', params: MORPH_P() },
+  { cat: '변형 / 효과', op: 'rotate', name: '회전 / 확대', desc: '각도와 배율 조절', params: [R('angle', '각도', -180, 180, 1, 15), R('scale', '배율', 0.1, 3, 0.05, 1)] },
+  { cat: '변형 / 효과', op: 'flip', name: '뒤집기', desc: '좌우 / 상하 반전', params: [SEL('mode', '방향', [['h', '좌우'], ['v', '상하'], ['hv', '좌우 + 상하']], 'h')] },
+  { cat: '변형 / 효과', op: 'pixelate', name: '모자이크', desc: '픽셀화', params: [R('block', '블록 크기', 2, 64, 1, 12)] },
+  { cat: '변형 / 효과', op: 'contours', name: '윤곽선 그리기', desc: '자동 이진화 후 물체 외곽선 표시', params: [R('min_area', '최소 면적', 0, 5000, 10, 200), R('thick', '선 두께', 1, 10, 1, 2)] },
+];
+const OP_BY_ID = Object.fromEntries(BASIC_OPS.map(o => [o.op, o]));
+
+// 추천 조합 (응용 필터 조합 표 + R09.py 시나리오 기반)
+const PRESETS = [
+  ['사진 선명하게 (보정)', [['clahe', { clip: 2 }], ['saturation', { scale: 1.2 }], ['unsharp', { amount: 0.8, sigma: 2 }]]],
+  ['문서/명함 OCR (조명 균일)', [['gaussian', { ksize: 3 }], ['adaptive', { block: 31, C: 10 }], ['open', {}], ['close', {}]]],
+  ['문서/명함 + 조명 불균일', [['bilateral', {}], ['adaptive', { block: 35, C: 5 }], ['close', { iter: 2 }]]],
+  ['저조도 / 낮은 대비 엣지', [['clahe', {}], ['gaussian', { ksize: 3 }], ['canny', { t1: 50, t2: 150 }]]],
+  ['흐린 이미지 엣지', [['unsharp', { amount: 0.5, sigma: 3 }], ['gaussian', { ksize: 3 }], ['canny', { t1: 80, t2: 180 }]]],
+  ['금속/PCB 고노이즈 엣지', [['median', { ksize: 5 }], ['gaussian', { ksize: 3 }], ['canny', { t1: 80, t2: 200 }], ['close', {}]]],
+  ['일반 물체 윤곽 추출', [['gaussian', { ksize: 5 }], ['canny', { t1: 70, t2: 180 }], ['close', {}]]],
+  ['객체 분리 (배경 제거)', [['gaussian', { ksize: 7 }], ['otsu', {}], ['close', { ksize: 5 }]]],
+  ['객체 외곽선 표시', [['gaussian', { ksize: 5 }], ['contours', {}]]],
+  ['연필 스케치 느낌', [['gray', {}], ['gaussian', { ksize: 3 }], ['adaptive', { method: 'mean', block: 9, C: 4 }]]],
+];
+
+const CHAIN_KEY = 'kong-ift-chain-v1';
+let nextStepId = 1;
+let chain = loadChain();
+let lastTimes = [];
+
+function newStep(op, over = {}) {
+  const d = OP_BY_ID[op];
+  return { id: nextStepId++, op, on: true, p: Object.fromEntries(d.params.map(x => [x.k, over[x.k] ?? x.def])) };
+}
+function presetSteps(i) { return PRESETS[i][1].map(([op, o]) => newStep(op, o)); }
+function loadChain() {
+  try {
+    const s = JSON.parse(localStorage.getItem(CHAIN_KEY));
+    if (Array.isArray(s)) return s.filter(x => OP_BY_ID[x.op]).map(x => ({ ...newStep(x.op, x.p), on: x.on !== false }));
+  } catch {}
+  return presetSteps(0);
+}
+function saveChain() {
+  try { localStorage.setItem(CHAIN_KEY, JSON.stringify(chain.map(({ op, on, p }) => ({ op, on, p })))); } catch {}
+}
+const activeSteps = () => chain.filter(s => s.on).map(s => ({ op: s.op, p: s.p, name: OP_BY_ID[s.op].name }));
+const basicPath = () => CURRENT_IMAGE_PATH || '/data/sample.png';
+function setBasicStatus(text, cls = '') { const el = $('basicStatus'); el.textContent = text; el.className = cls; }
+
+// ── 필터 목록 ──
+function renderCatalog() {
+  const q = $('opSearch').value.trim().toLowerCase();
+  let html = '', last = '';
+  for (const o of BASIC_OPS) {
+    if (q && !(o.name + ' ' + o.desc + ' ' + o.cat + ' ' + o.op).toLowerCase().includes(q)) continue;
+    if (o.cat !== last) { html += `<div class="cat">${esc(o.cat)}</div>`; last = o.cat; }
+    html += `<button data-op="${o.op}" title="${esc(o.desc)} — 클릭해서 추가"><span>${esc(o.name)}</span><span class="plus">＋</span><small>${esc(o.desc)}</small></button>`;
+  }
+  $('opList').innerHTML = html || '<div class="cat">검색 결과가 없습니다.</div>';
+}
+$('opSearch').addEventListener('input', renderCatalog);
+$('opList').addEventListener('click', e => {
+  const b = e.target.closest('button[data-op]');
+  if (!b) return;
+  chain.push(newStep(b.dataset.op));
+  chainChanged();
+  const list = $('chainList');
+  list.lastElementChild?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+});
+
+// ── 적용할 필터 (체인) ──
+const fmtVal = (v, pd) => pd.step < 1 ? (+v).toFixed(pd.step < 0.1 ? 2 : 1) : String(v);
+
+function paramHtml(s, pd) {
+  const id = `p${s.id}_${pd.k}`, v = s.p[pd.k];
+  if (pd.type === 'select')
+    return `<label for="${id}">${esc(pd.label)}</label><select id="${id}" data-k="${pd.k}">` +
+      pd.options.map(([val, t]) => `<option value="${val}"${String(v) === val ? ' selected' : ''}>${esc(t)}</option>`).join('') + '</select>';
+  if (pd.type === 'check')
+    return `<label for="${id}">${esc(pd.label)}</label><span class="chk"><input type="checkbox" id="${id}" data-k="${pd.k}"${v ? ' checked' : ''}></span>`;
+  return `<label for="${id}">${esc(pd.label)}</label><input type="range" id="${id}" data-k="${pd.k}" min="${pd.min}" max="${pd.max}" step="${pd.step}" value="${v}"><span class="val">${fmtVal(v, pd)}</span>`;
+}
+
+function renderChain() {
+  const list = $('chainList');
+  if (!chain.length) {
+    list.innerHTML = '<div class="hint">왼쪽 필터 목록에서 필터를 클릭해 추가하거나<br>위의 “추천 조합 불러오기”를 사용하세요.<br><br>필터가 없으면 원본이 그대로 표시됩니다.</div>';
+  } else {
+    list.innerHTML = chain.map((s, i) => {
+      const d = OP_BY_ID[s.op];
+      const body = d.params.length ? d.params.map(pd => paramHtml(s, pd)).join('') : '<div class="none">조절할 파라미터가 없습니다.</div>';
+      return `<div class="step${s.on ? '' : ' off'}" data-id="${s.id}">
+        <div class="step-head">
+          <input type="checkbox" data-act="toggle"${s.on ? ' checked' : ''} title="이 필터 켜기/끄기" aria-label="${esc(d.name)} 사용">
+          <span class="num">${i + 1}</span><span class="name" title="${esc(d.desc)}">${esc(d.name)}</span>
+          <span class="ms"></span>
+          <button data-act="up" title="위로"${i === 0 ? ' disabled' : ''}>▲</button>
+          <button data-act="down" title="아래로"${i === chain.length - 1 ? ' disabled' : ''}>▼</button>
+          <button data-act="reset" title="파라미터 기본값">↺</button>
+          <button data-act="del" title="삭제">✕</button>
+        </div>
+        <div class="step-body">${body}</div>
+      </div>`;
+    }).join('');
+  }
+  showTimes();
+}
+
+function showTimes() {
+  let k = 0, total = 0;
+  for (const s of chain) {
+    const el = document.querySelector(`#chainList .step[data-id="${s.id}"] .ms`);
+    const t = s.on ? lastTimes[k++] : undefined;
+    if (t != null) total += t;
+    if (el) el.textContent = t != null ? `${t} ms` : (s.on ? '' : '꺼짐');
+  }
+  const n = chain.filter(s => s.on).length;
+  $('chainTotal').textContent = chain.length ? `${n}개 필터 적용 · 처리 ${total.toFixed(1)} ms` : '';
+}
+
+function chainChanged() { renderChain(); saveChain(); scheduleChainRun(0); }
+const stepOf = el => chain.find(s => s.id === +el.closest('.step').dataset.id);
+
+$('chainList').addEventListener('input', e => {
+  const t = e.target;
+  if (!t.dataset.k) return;
+  const s = stepOf(t), pd = OP_BY_ID[s.op].params.find(x => x.k === t.dataset.k);
+  s.p[pd.k] = pd.type === 'check' ? t.checked : pd.type === 'range' ? +t.value : t.value;
+  if (pd.type === 'range') t.nextElementSibling.textContent = fmtVal(t.value, pd);
+  saveChain();
+  scheduleChainRun();
+});
+$('chainList').addEventListener('change', e => {
+  if (e.target.dataset.act !== 'toggle') return;
+  const s = stepOf(e.target);
+  s.on = e.target.checked;
+  e.target.closest('.step').classList.toggle('off', !s.on);
+  saveChain(); scheduleChainRun(0);
+});
+$('chainList').addEventListener('click', e => {
+  const b = e.target.closest('button[data-act]');
+  if (!b) return;
+  const s = stepOf(b), i = chain.indexOf(s);
+  switch (b.dataset.act) {
+    case 'up': [chain[i - 1], chain[i]] = [chain[i], chain[i - 1]]; break;
+    case 'down': [chain[i + 1], chain[i]] = [chain[i], chain[i + 1]]; break;
+    case 'reset': s.p = newStep(s.op).p; break;
+    case 'del': chain.splice(i, 1); break;
+  }
+  chainChanged();
+});
+
+$('presetSel').innerHTML += PRESETS.map(([name], i) => `<option value="${i}">${esc(name)}</option>`).join('');
+$('presetSel').onchange = e => {
+  if (e.target.value === '') return;
+  chain = presetSteps(+e.target.value);
+  e.target.value = '';
+  chainChanged();
+};
+$('btnChainClear').onclick = () => {
+  if (!chain.length || !confirm('적용할 필터를 모두 지울까요?')) return;
+  chain = [];
+  chainChanged();
+};
+
+// ── 실행 (Python/OpenCV) ──
+let chainTimer = 0, chainRunning = false, chainRerun = false;
+let basicResultGray = false;
+
+function scheduleChainRun(delay = 60) {
+  clearTimeout(chainTimer);
+  chainTimer = setTimeout(runChain, delay);
+}
+async function runChain() {
+  if (chainRunning) { chainRerun = true; return; }
+  chainRunning = true;
+  try {
+    do { chainRerun = false; await runChainOnce(); } while (chainRerun);
+  } finally {
+    chainRunning = false;
+  }
+}
+async function runChainOnce() {
+  setBasicStatus(pyLoaded ? '처리 중…' : 'Python/OpenCV 로딩 대기 중…');
+  try {
+    await pyReady;
+    if (!virtualFiles.has(basicPath())) { setBasicStatus('이미지 준비 중…'); return; }
+    const t0 = performance.now();
+    const { info: r, image: res } = await pyCall('chain', { path: basicPath(), steps: JSON.stringify(activeSteps()), maxSide: +$('previewSize').value });
+    basicResultGray = r.gray;
+    drawImageData($('cvBasicRes'), $('emptyBasicRes'), res);
+    $('basicResInfo').textContent = `${r.w}×${r.h}` + (r.scale < 1 ? ` · 미리보기 ${Math.round(r.scale * 100)}%` : '') + (r.gray ? ' · 흑백' : '');
+    lastTimes = r.times;
+    showTimes();
+    document.querySelectorAll('#chainList .step.err').forEach(el => el.classList.remove('err'));
+    histRes = computeHist(res.data);
+    drawHistogram(); updateStats();
+    setBasicStatus(`완료 · ${(performance.now() - t0).toFixed(0)} ms`, 'ok');
+  } catch (e) {
+    if (e.stopped) return;
+    console.error(e);
+    const msg = pyLoaded ? pyErrorMessage(e).replace(/^RuntimeError:\s*/, '') : 'Python/OpenCV를 불러오지 못했습니다. 인터넷 연결을 확인해 주세요.';
+    setBasicStatus(msg, 'err');
+    const m = msg.match(/^(\d+)단계/);
+    const bad = m && chain.filter(s => s.on)[+m[1] - 1];
+    if (bad) document.querySelector(`#chainList .step[data-id="${bad.id}"]`)?.classList.add('err');
+  }
+}
+$('previewSize').onchange = () => scheduleChainRun(0);
+
+function basicSetSource(bitmap) {
+  const c = $('cvBasicSrc');
+  c.width = bitmap.width; c.height = bitmap.height;
+  c.getContext('2d').drawImage(bitmap, 0, 0);
+  $('emptyBasicSrc').hidden = true;
+  $('basicSrcInfo').textContent = `${bitmap.width}×${bitmap.height}`;
+  // 원본 히스토그램 (큰 이미지는 축소해서 계산 — 비율 분포라 결과는 같음)
+  const s = Math.min(1, 1024 / Math.max(bitmap.width, bitmap.height));
+  const oc = new OffscreenCanvas(Math.max(1, Math.round(bitmap.width * s)), Math.max(1, Math.round(bitmap.height * s)));
+  const g = oc.getContext('2d');
+  g.drawImage(bitmap, 0, 0, oc.width, oc.height);
+  histSrc = computeHist(g.getImageData(0, 0, oc.width, oc.height).data);
+  drawHistogram(); updateStats();
+  scheduleChainRun(0);
+}
+
+$('btnBasicImg').onclick = () => $('fileInput').click();
+
+$('btnBasicSave').onclick = async () => {
+  const btn = $('btnBasicSave');
+  btn.disabled = true;
+  setBasicStatus('원본 크기로 처리 중…');
+  try {
+    await pyReady;
+    const { image: res } = await pyCall('chain', { path: basicPath(), steps: JSON.stringify(activeSteps()), maxSide: 0 });
+    const c = document.createElement('canvas');
+    c.width = res.width; c.height = res.height;
+    c.getContext('2d').putImageData(res, 0, 0);
+    const blob = await new Promise(r => c.toBlob(r, 'image/png'));
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = basicPath().split('/').pop().replace(/\.[^.]+$/, '') + '_필터적용.png';
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+    setBasicStatus(`저장됨 · ${a.download} (${res.width}×${res.height})`, 'ok');
+  } catch (e) {
+    console.error(e);
+    if (!e.stopped) setBasicStatus(pyLoaded ? pyErrorMessage(e) : 'Python/OpenCV를 불러오지 못했습니다.', 'err');
+  } finally {
+    btn.disabled = false;
+  }
+};
+
+// ── Python 코드 보기 ──
+const codeDlg = $('codeDlg');
+$('btnChainCode').onclick = async () => {
+  try {
+    await pyReady;
+    $('chainCode').value = (await pyCall('chainCode', { path: basicPath(), steps: JSON.stringify(activeSteps()) })).code;
+    codeDlg.showModal();
+  } catch (e) {
+    setBasicStatus('Python/OpenCV를 불러오지 못했습니다.', 'err');
+  }
+};
+$('btnCodeClose').onclick = () => codeDlg.close();
+codeDlg.addEventListener('click', e => {
+  if (e.target !== codeDlg) return;
+  const r = codeDlg.getBoundingClientRect();
+  if (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) codeDlg.close();
+});
+$('btnCodeCopy').onclick = async () => {
+  const b = $('btnCodeCopy');
+  try { await navigator.clipboard.writeText($('chainCode').value); }
+  catch { $('chainCode').select(); document.execCommand('copy'); }
+  b.textContent = '복사됨';
+  setTimeout(() => b.textContent = '코드 복사', 1200);
+};
+$('btnCodeToExpert').onclick = () => {
+  taxRows.forEach(r => r.classList.remove('sel'));
+  selectedType = null;
+  $('snipCode').value = $('chainCode').value;
+  codeDlg.close();
+  selectTab($('tabbtn-cheat'));
+  runSnippet();
+};
+
+// ── 히스토그램 ──
+let histSrc = null, histRes = null, histHover = null, histGeom = null;
+
+function computeHist(data) {
+  const h = { l: new Float64Array(256), r: new Float64Array(256), g: new Float64Array(256), b: new Float64Array(256) };
+  for (let i = 0; i < data.length; i += 4) {
+    const R = data[i], G = data[i + 1], B = data[i + 2];
+    h.r[R]++; h.g[G]++; h.b[B]++;
+    h.l[(299 * R + 587 * G + 114 * B) / 1000 | 0]++;
+  }
+  const n = data.length / 4 || 1;
+  for (const k of ['l', 'r', 'g', 'b']) for (let i = 0; i < 256; i++) h[k][i] /= n; // 비율(0~1)로 정규화
+  return h;
+}
+
+function drawHistogram() {
+  const cv = $('histCv'), W = cv.clientWidth, H = cv.clientHeight;
+  if (!W || !H) return;
+  const dpr = devicePixelRatio || 1;
+  cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
+  const g = cv.getContext('2d');
+  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  g.clearRect(0, 0, W, H);
+  const css = getComputedStyle(document.documentElement);
+  const muted = css.getPropertyValue('--muted').trim(), grid = css.getPropertyValue('--border-soft').trim();
+  const pad = { l: 10, r: 10, t: 10, b: 20 }, w = W - pad.l - pad.r, h = H - pad.t - pad.b;
+  histGeom = { pad, w };
+
+  g.lineWidth = 1; g.strokeStyle = grid; g.fillStyle = muted; g.font = '10px sans-serif'; g.textAlign = 'center';
+  for (const v of [0, 64, 128, 192, 255]) {
+    const x = Math.round(pad.l + v / 255 * w) + .5;
+    g.beginPath(); g.moveTo(x, pad.t); g.lineTo(x, pad.t + h); g.stroke();
+    g.fillText(String(v), x, H - 6);
+  }
+
+  const mode = document.querySelector('input[name=histMode]:checked').value, log = $('histLog').checked;
+  const rgb = mode === 'rgb' && !basicResultGray;
+  const series = [];
+  if (histSrc) series.push({ d: histSrc.l, fill: 'rgba(150,150,150,.45)' });
+  if (histRes) {
+    if (rgb) series.push({ d: histRes.r, stroke: '#e5484d' }, { d: histRes.g, stroke: '#30a46c' }, { d: histRes.b, stroke: '#3e8bff' });
+    else series.push({ d: histRes.l, stroke: '#ff9f1a', width: 2 });
+  }
+  const tf = v => log ? Math.log10(1 + v * 1e4) : v;
+  let max = 1e-9;
+  for (const s of series) for (let i = 0; i < 256; i++) max = Math.max(max, tf(s.d[i]));
+  const X = i => pad.l + i / 255 * w, Y = v => pad.t + h - tf(v) / max * h;
+  for (const s of series) {
+    g.beginPath();
+    if (s.fill) g.moveTo(X(0), pad.t + h); else g.moveTo(X(0), Y(s.d[0]));
+    for (let i = 0; i < 256; i++) g.lineTo(X(i), Y(s.d[i]));
+    if (s.fill) { g.lineTo(X(255), pad.t + h); g.closePath(); g.fillStyle = s.fill; g.fill(); }
+    else { g.strokeStyle = s.stroke; g.lineWidth = s.width || 1.4; g.lineJoin = 'round'; g.stroke(); }
+  }
+  if (histHover != null) {
+    const x = Math.round(X(histHover)) + .5;
+    g.setLineDash([3, 3]); g.strokeStyle = muted; g.lineWidth = 1;
+    g.beginPath(); g.moveTo(x, pad.t); g.lineTo(x, pad.t + h); g.stroke();
+    g.setLineDash([]);
+  }
+
+  const box = c => `<i style="background:${c}"></i>`;
+  $('histLegend').innerHTML = `<span>${box('rgba(150,150,150,.7)')}원본 밝기</span>` +
+    (rgb ? `<span>${box('#e5484d')}결과 R</span><span>${box('#30a46c')}결과 G</span><span>${box('#3e8bff')}결과 B</span>`
+         : `<span>${box('#ff9f1a')}결과 밝기</span>`);
+}
+
+function statsOf(hh) {
+  if (!hh) return null;
+  const l = hh.l;
+  let mean = 0, v = 0, dark = 0, bright = 0, min = 0, max = 255;
+  for (let i = 0; i < 256; i++) mean += i * l[i];
+  for (let i = 0; i < 256; i++) { v += (i - mean) ** 2 * l[i]; if (i < 64) dark += l[i]; if (i >= 192) bright += l[i]; }
+  while (min < 255 && l[min] === 0) min++;
+  while (max > 0 && l[max] === 0) max--;
+  return { mean, std: Math.sqrt(v), min, max, dark, bright };
+}
+function updateStats() {
+  const a = statsOf(histSrc), b = statsOf(histRes);
+  const pct = x => (x * 100).toFixed(1) + '%';
+  const rows = [
+    ['평균 밝기', s => s.mean.toFixed(1)],
+    ['대비 (표준편차)', s => s.std.toFixed(1)],
+    ['최소 / 최대', s => `${s.min} / ${s.max}`],
+    ['어두운 영역 (<64)', s => pct(s.dark)],
+    ['밝은 영역 (≥192)', s => pct(s.bright)],
+  ];
+  $('histStats').tBodies[0].innerHTML = rows.map(([k, f]) =>
+    `<tr><td>${k}</td><td class="r">${a ? f(a) : '-'}</td><td class="r">${b ? f(b) : '-'}</td></tr>`).join('');
+}
+
+$('histCv').addEventListener('pointermove', e => {
+  if (!histGeom) return;
+  const r = e.currentTarget.getBoundingClientRect();
+  const v = Math.max(0, Math.min(255, Math.round((e.clientX - r.left - histGeom.pad.l) / histGeom.w * 255)));
+  histHover = v;
+  const pct = x => x == null ? '-' : (x * 100).toFixed(2) + '%';
+  const rgb = document.querySelector('input[name=histMode]:checked').value === 'rgb' && !basicResultGray;
+  $('histTip').textContent = `값 ${v} · 원본 ${pct(histSrc?.l[v])} · ` +
+    (rgb ? `결과 R ${pct(histRes?.r[v])} G ${pct(histRes?.g[v])} B ${pct(histRes?.b[v])}` : `결과 ${pct(histRes?.l[v])}`);
+  drawHistogram();
+});
+$('histCv').addEventListener('pointerleave', () => { histHover = null; $('histTip').textContent = ''; drawHistogram(); });
+document.querySelectorAll('input[name=histMode]').forEach(r => r.onchange = drawHistogram);
+$('histLog').onchange = drawHistogram;
+new ResizeObserver(() => drawHistogram()).observe(document.querySelector('.hist-plot'));
+
+// ═══════════════════════ 좌우 너비 조절 (드래그 · ←→ 키 · 더블클릭 초기화) ═══════════════════════
+const LAYOUT_KEY = 'kong-ift-layout-v1';
+const SPLIT_W = 8, GAP = 4;
+const MIN = { tax: 280, cheatRight: 320, view: 320, cat: 180, chain: 260 };
+let layout = {};
+try { layout = JSON.parse(localStorage.getItem(LAYOUT_KEY)) || {}; } catch {}
+
+const contentWidth = el => { const cs = getComputedStyle(el); return el.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight); };
+const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+
+/** 저장된 너비를 현재 창 크기에 맞게 제한해서 적용 (값이 없으면 기본 비율) */
+function applyLayout() {
+  const cheat = $('tab-cheat'), basic = $('tab-basic');
+  if (layout.tax != null && !cheat.hidden) {
+    const avail = contentWidth(cheat) - SPLIT_W - GAP * 2;
+    layout.tax = clamp(layout.tax, MIN.tax, Math.max(MIN.tax, avail - MIN.cheatRight));
+  }
+  layout.tax != null ? cheat.style.setProperty('--tax-w', layout.tax + 'px') : cheat.style.removeProperty('--tax-w');
+  if (!basic.hidden && (layout.cat != null || layout.chain != null)) {
+    const avail = contentWidth(basic) - SPLIT_W * 2 - GAP * 4 - MIN.view;
+    let cat = layout.cat ?? 230, ch = layout.chain ?? 340;
+    if (cat + ch > avail) { const k = avail / (cat + ch); cat = Math.max(MIN.cat, cat * k); ch = Math.max(MIN.chain, ch * k); }
+    layout.cat = Math.round(cat); layout.chain = Math.round(ch);
+  }
+  layout.cat != null ? basic.style.setProperty('--cat-w', layout.cat + 'px') : basic.style.removeProperty('--cat-w');
+  layout.chain != null ? basic.style.setProperty('--chain-w', layout.chain + 'px') : basic.style.removeProperty('--chain-w');
+}
+function saveLayout() { try { localStorage.setItem(LAYOUT_KEY, JSON.stringify(layout)); } catch {} }
+
+/** 분할 막대 공통 처리: start()로 시작 상태를 잡고 move(dx, state)로 너비 계산 */
+function initSplitter(sp, { start, move, reset }) {
+  sp.addEventListener('pointerdown', e => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    sp.setPointerCapture(e.pointerId);
+    sp.classList.add('drag');
+    document.body.classList.add('col-resizing');
+    const x0 = e.clientX, st = start();
+    const onMove = ev => { move(ev.clientX - x0, st); applyLayout(); };
+    const onUp = () => {
+      sp.classList.remove('drag');
+      document.body.classList.remove('col-resizing');
+      sp.removeEventListener('pointermove', onMove);
+      sp.removeEventListener('pointerup', onUp);
+      sp.removeEventListener('pointercancel', onUp);
+      saveLayout();
+    };
+    sp.addEventListener('pointermove', onMove);
+    sp.addEventListener('pointerup', onUp);
+    sp.addEventListener('pointercancel', onUp);
+  });
+  sp.addEventListener('keydown', e => {
+    const dx = e.key === 'ArrowLeft' ? -20 : e.key === 'ArrowRight' ? 20 : 0;
+    if (!dx) return;
+    e.preventDefault();
+    move(dx, start()); applyLayout(); saveLayout();
+  });
+  sp.addEventListener('dblclick', () => { reset(); applyLayout(); saveLayout(); });
+}
+
+// 필터 테스트: 치트시트 | 코드·미리보기
+initSplitter($('splitCheat'), {
+  start: () => ({ w: document.querySelector('#tab-cheat > .tax-box').getBoundingClientRect().width }),
+  move: (dx, st) => {
+    const avail = contentWidth($('tab-cheat')) - SPLIT_W - GAP * 2;
+    layout.tax = Math.round(clamp(st.w + dx, MIN.tax, avail - MIN.cheatRight));
+  },
+  reset: () => { delete layout.tax; },
+});
+
+// 이미지 수정: 이미지 | 필터 목록 | 적용할 필터
+const basicWidths = () => ({
+  cat: document.querySelector('#tab-basic > .catalog').getBoundingClientRect().width,
+  chain: document.querySelector('#tab-basic > .chain-box').getBoundingClientRect().width,
+  avail: contentWidth($('tab-basic')) - SPLIT_W * 2 - GAP * 4,
+});
+initSplitter($('splitBasic1'), { // 오른쪽으로 끌면 이미지가 넓어지고 필터 목록이 좁아짐
+  start: basicWidths,
+  move: (dx, st) => {
+    layout.chain = Math.round(st.chain);
+    layout.cat = Math.round(clamp(st.cat - dx, MIN.cat, st.avail - st.chain - MIN.view));
+  },
+  reset: () => { delete layout.cat; delete layout.chain; },
+});
+initSplitter($('splitBasic2'), { // 필터 목록 ↔ 적용할 필터 사이
+  start: basicWidths,
+  move: (dx, st) => {
+    const total = st.cat + st.chain;
+    layout.cat = Math.round(clamp(st.cat + dx, MIN.cat, total - MIN.chain));
+    layout.chain = Math.round(total - layout.cat);
+  },
+  reset: () => { delete layout.cat; delete layout.chain; },
+});
+addEventListener('resize', applyLayout);
+
+/** 표 열 너비 조절: 머리글 오른쪽 경계 드래그, 더블클릭하면 자동 너비로 복귀. 너비는 key로 저장 */
+function makeColumnsResizable(table, key) {
+  const ths = [...table.tHead.rows[0].cells];
+  const colgroup = document.createElement('colgroup');
+  const cols = ths.map(() => colgroup.appendChild(document.createElement('col')));
+  table.prepend(colgroup);
+
+  let widths = null;
+  try { const s = JSON.parse(localStorage.getItem(key)); if (Array.isArray(s) && s.length === ths.length) widths = s; } catch {}
+  const apply = () => {
+    table.classList.toggle('fixed-cols', !!widths);
+    cols.forEach((c, i) => c.style.width = widths ? widths[i] + 'px' : '');
+    table.style.width = widths ? widths.reduce((a, b) => a + b, 0) + 'px' : '';
+  };
+  const save = () => { try { widths ? localStorage.setItem(key, JSON.stringify(widths)) : localStorage.removeItem(key); } catch {} };
+  apply();
+
+  ths.forEach((th, i) => {
+    const h = document.createElement('span');
+    h.className = 'col-resizer';
+    h.title = '드래그: 열 너비 조절 · 더블클릭: 자동 너비';
+    th.appendChild(h);
+    h.addEventListener('pointerdown', e => {
+      if (e.button !== 0) return;
+      e.preventDefault(); e.stopPropagation();
+      h.setPointerCapture(e.pointerId);
+      h.classList.add('drag');
+      document.body.classList.add('col-resizing');
+      const start = widths ? [...widths] : ths.map(t => Math.round(t.getBoundingClientRect().width)); // 자동 너비에서 시작
+      const x0 = e.clientX;
+      const onMove = ev => {
+        widths = [...start];
+        widths[i] = Math.max(36, Math.round(start[i] + ev.clientX - x0));
+        apply();
+      };
+      const onUp = () => {
+        h.classList.remove('drag');
+        document.body.classList.remove('col-resizing');
+        h.removeEventListener('pointermove', onMove);
+        h.removeEventListener('pointerup', onUp);
+        h.removeEventListener('pointercancel', onUp);
+        save();
+      };
+      h.addEventListener('pointermove', onMove);
+      h.addEventListener('pointerup', onUp);
+      h.addEventListener('pointercancel', onUp);
+    });
+    h.addEventListener('click', e => e.stopPropagation());
+    h.addEventListener('dblclick', e => { e.stopPropagation(); widths = null; apply(); save(); });
+  });
+}
+makeColumnsResizable($('taxTable'), 'kong-ift-taxcols-v1');
+applyLayout();
+
+renderCatalog();
+renderChain();
+updateStats();
+try { const saved = $(localStorage.getItem('kong-ift-tab2') || 'tabbtn-basic'); selectTab(saved || $('tabbtn-basic')); } catch { selectTab($('tabbtn-basic')); }
+</script>
+</body>
+</html>

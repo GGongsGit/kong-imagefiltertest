@@ -1,0 +1,13 @@
+# Claude Code 로컬 설정 (내 PC 전용 경로 포함)
+.claude/
+
+# Python / PyInstaller 산출물
+__pycache__/
+*.pyc
+build/
+dist/
+
+# OS / 에디터
+Thumbs.db
+desktop.ini
+.vscode/
