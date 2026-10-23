@@ -170,6 +170,10 @@
   #opList button:hover { background: var(--row-hover); }
   #opList button small { grid-column: 1; color: var(--muted); font-size: 11px; }
   #opList button .plus { grid-column: 2; grid-row: 1 / span 2; align-self: center; color: var(--accent); font-weight: 700; font-size: 15px; }
+  #opList button.added > span:first-child { color: var(--muted); }
+  #opList button.added .plus { color: var(--ok); }
+  @keyframes stepFlash { 0%, 60% { box-shadow: 0 0 0 2px var(--accent); } 100% { box-shadow: 0 0 0 2px transparent; } }
+  .step.flash { animation: stepFlash 1.2s ease-out; }
 
   .chain-box { grid-template-rows: auto 1fr auto; gap: 8px; }
   .chain-bar, .chain-foot { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
@@ -1725,7 +1729,11 @@ function presetSteps(i) { return PRESETS[i][1].map(([op, o]) => newStep(op, o));
 function loadChain() {
   try {
     const s = JSON.parse(localStorage.getItem(CHAIN_KEY));
-    if (Array.isArray(s)) return s.filter(x => OP_BY_ID[x.op]).map(x => ({ ...newStep(x.op, x.p), on: x.on !== false }));
+    if (Array.isArray(s)) {
+      const seen = new Set(); // 예전에 중복 저장된 필터는 첫 번째만 남김
+      return s.filter(x => OP_BY_ID[x.op] && !seen.has(x.op) && seen.add(x.op))
+              .map(x => ({ ...newStep(x.op, x.p), on: x.on !== false }));
+    }
   } catch {}
   return presetSteps(0);
 }
@@ -1743,7 +1751,10 @@ function renderCatalog() {
   for (const o of BASIC_OPS) {
     if (q && !(o.name + ' ' + o.desc + ' ' + o.cat + ' ' + o.op).toLowerCase().includes(q)) continue;
     if (o.cat !== last) { html += `<div class="cat">${esc(o.cat)}</div>`; last = o.cat; }
-    html += `<button data-op="${o.op}" title="${esc(o.desc)} — 클릭해서 추가"><span>${esc(o.name)}</span><span class="plus">＋</span><small>${esc(o.desc)}</small></button>`;
+    const added = chain.some(s => s.op === o.op);
+    html += added
+      ? `<button data-op="${o.op}" class="added" title="이미 추가됨 — 클릭하면 해당 필터로 이동"><span>${esc(o.name)}</span><span class="plus">✓</span><small>${esc(o.desc)}</small></button>`
+      : `<button data-op="${o.op}" title="${esc(o.desc)} — 클릭해서 추가"><span>${esc(o.name)}</span><span class="plus">＋</span><small>${esc(o.desc)}</small></button>`;
   }
   $('opList').innerHTML = html || '<div class="cat">검색 결과가 없습니다.</div>';
 }
@@ -1751,10 +1762,17 @@ $('opSearch').addEventListener('input', renderCatalog);
 $('opList').addEventListener('click', e => {
   const b = e.target.closest('button[data-op]');
   if (!b) return;
-  chain.push(newStep(b.dataset.op));
+  const op = b.dataset.op, exist = chain.find(s => s.op === op);
+  if (exist) { // 중복 등록 금지 → 이미 있는 필터로 이동해서 깜빡임
+    const card = document.querySelector(`#chainList .step[data-id="${exist.id}"]`);
+    card?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    card?.classList.remove('flash'); void card?.offsetWidth; card?.classList.add('flash');
+    setBasicStatus(`‘${OP_BY_ID[op].name}’은(는) 이미 추가되어 있습니다.`);
+    return;
+  }
+  chain.push(newStep(op));
   chainChanged();
-  const list = $('chainList');
-  list.lastElementChild?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  $('chainList').lastElementChild?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
 });
 
 // ── 적용할 필터 (체인) ──
@@ -1807,7 +1825,7 @@ function showTimes() {
   $('chainTotal').textContent = chain.length ? `${n}개 필터 적용 · 처리 ${total.toFixed(1)} ms` : '';
 }
 
-function chainChanged() { renderChain(); saveChain(); scheduleChainRun(0); }
+function chainChanged() { renderChain(); renderCatalog(); saveChain(); scheduleChainRun(0); }
 const stepOf = el => chain.find(s => s.id === +el.closest('.step').dataset.id);
 
 $('chainList').addEventListener('input', e => {
