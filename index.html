@@ -1413,23 +1413,170 @@ function setCurrentImage(path, bitmap) {
   if (selectedType) { $('snipCode').value = buildCodeForType(selectedType); scheduleAutoRun(); }
 }
 
+/**
+ * 기본 샘플 이미지 (AI 테마, 960×640)
+ * 필터마다 변화가 잘 보이도록 요소를 배치:
+ *  - 불균일 조명(왼쪽 위 밝음 / 오른쪽 아래 그림자) → CLAHE·감마·적응형 이진화
+ *  - 회로 패턴·칩 핀·신경망 선 → 엣지(Canny/Sobel)·형태학
+ *  - 로봇 눈·노드(원) → Hough Circle, 큰 글자 → 이진화·OCR
+ *  - 색상 스펙트럼 / 그레이 스텝 → 채도·HSV·히스토그램, 노이즈 패치 → 미디언·NLMeans
+ *  - QR 형태 블록 → 형태학·윤곽선
+ */
 async function makeSampleImage() {
-  const c = new OffscreenCanvas(800, 600);
-  const g = c.getContext('2d');
-  const grad = g.createLinearGradient(0, 0, 800, 560);
-  grad.addColorStop(0, 'rgb(25,50,120)'); grad.addColorStop(1, 'rgb(245,190,80)');
-  g.fillStyle = grad; g.fillRect(0, 0, 800, 600);
-  g.fillStyle = 'crimson'; g.beginPath(); g.arc(160, 150, 100, 0, Math.PI * 2); g.fill();
-  g.fillStyle = 'forestgreen'; g.fillRect(320, 70, 170, 170);
-  g.fillStyle = 'whitesmoke'; g.beginPath(); g.moveTo(650, 50); g.lineTo(760, 240); g.lineTo(540, 240); g.fill();
-  for (let i = 0; i < 10; i++)
-    for (let j = 0; j < 10; j++) { g.fillStyle = (i + j) % 2 ? '#fff' : '#000'; g.fillRect(50 + i * 18, 340 + j * 18, 18, 18); }
-  g.strokeStyle = '#000'; g.lineWidth = 2;
-  for (let r = 8; r <= 130; r += 9) { g.beginPath(); g.arc(620, 440, r, 0, Math.PI * 2); g.stroke(); }
-  for (let i = 0; i < 16; i++) { const v = i * 17; g.fillStyle = `rgb(${v},${v},${v})`; g.fillRect(260 + i * 16, 520, 16, 50); }
-  g.font = 'bold 40px "Malgun Gothic", sans-serif'; g.textBaseline = 'top';
-  g.fillStyle = '#000'; g.fillText('이미지 필터 TEST', 252, 266);
-  g.fillStyle = '#fff'; g.fillText('이미지 필터 TEST', 248, 262);
+  const W = 960, H = 640, TAU = Math.PI * 2;
+  const c = new OffscreenCanvas(W, H), g = c.getContext('2d');
+  let seed = 20261024;
+  const rnd = () => (seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296; // 고정 시드 → 항상 같은 그림
+  const rrect = (x, y, w, h, r) => { g.beginPath(); g.roundRect(x, y, w, h, r); };
+  const font = (px, w = 'bold') => `${w} ${px}px "Malgun Gothic", "Apple SD Gothic Neo", sans-serif`;
+
+  // 1) 배경: 남색→보라 + 왼쪽 위 조명
+  const bg = g.createLinearGradient(0, 0, W, H);
+  bg.addColorStop(0, '#0b1a3a'); bg.addColorStop(0.55, '#26124c'); bg.addColorStop(1, '#0a0d1c');
+  g.fillStyle = bg; g.fillRect(0, 0, W, H);
+  const light = g.createRadialGradient(170, 110, 10, 170, 110, 560);
+  light.addColorStop(0, 'rgba(120,200,255,0.50)'); light.addColorStop(1, 'rgba(120,200,255,0)');
+  g.fillStyle = light; g.fillRect(0, 0, W, H);
+
+  // 2) 회로 기판 패턴
+  g.lineWidth = 1.6; g.lineCap = 'round'; g.lineJoin = 'round';
+  for (let i = 0; i < 80; i++) {
+    let x = Math.round(rnd() * W / 20) * 20, y = Math.round(rnd() * H / 20) * 20;
+    g.strokeStyle = 'rgba(80,220,255,0.20)';
+    g.beginPath(); g.moveTo(x, y);
+    for (let k = 0; k < 4; k++) {
+      const d = (rnd() < 0.5 ? -1 : 1) * 20 * (1 + Math.floor(rnd() * 4));
+      if (rnd() < 0.5) x += d; else y += d;
+      g.lineTo(x, y);
+    }
+    g.stroke();
+    g.fillStyle = 'rgba(80,220,255,0.40)'; g.beginPath(); g.arc(x, y, 3, 0, TAU); g.fill();
+  }
+
+  // 3) 신경망 (오른쪽 위)
+  const layers = [[3, 640], [5, 725], [5, 810], [2, 900]].map(([n, x]) =>
+    Array.from({ length: n }, (_, i) => [x, 145 + (i - (n - 1) / 2) * 46]));
+  g.lineWidth = 1.2;
+  for (let l = 0; l < layers.length - 1; l++)
+    for (const [x1, y1] of layers[l]) for (const [x2, y2] of layers[l + 1]) {
+      g.strokeStyle = `rgba(190,150,255,${0.25 + rnd() * 0.4})`;
+      g.beginPath(); g.moveTo(x1, y1); g.lineTo(x2, y2); g.stroke();
+    }
+  layers.flat().forEach(([x, y], i) => {
+    const ng = g.createRadialGradient(x - 3, y - 3, 1, x, y, 12);
+    ng.addColorStop(0, '#ffffff'); ng.addColorStop(1, i % 3 ? '#b05cff' : '#2fd6ff');
+    g.shadowColor = '#b05cff'; g.shadowBlur = 12;
+    g.fillStyle = ng; g.beginPath(); g.arc(x, y, 11, 0, TAU); g.fill();
+    g.shadowBlur = 0;
+  });
+  g.fillStyle = 'rgba(220,210,255,0.85)'; g.font = font(13, 'normal'); g.textAlign = 'center';
+  g.fillText('Neural Network', 770, 290);
+
+  // 4) AI 칩 (가운데 위)
+  const cx = 480, cy = 240, s = 170;
+  g.fillStyle = '#c9d2e3';
+  for (let i = 0; i < 8; i++) {
+    const t = -s / 2 + 14 + i * ((s - 28) / 7);
+    g.fillRect(cx + t - 3, cy - s / 2 - 22, 6, 22); g.fillRect(cx + t - 3, cy + s / 2, 6, 22);
+    g.fillRect(cx - s / 2 - 22, cy + t - 3, 22, 6); g.fillRect(cx + s / 2, cy + t - 3, 22, 6);
+  }
+  g.shadowColor = '#38e1ff'; g.shadowBlur = 24;
+  rrect(cx - s / 2, cy - s / 2, s, s, 16); g.fillStyle = '#1b2233'; g.fill();
+  g.shadowBlur = 0; g.lineWidth = 3; g.strokeStyle = '#7fd8ff'; g.stroke();
+  rrect(cx - 55, cy - 55, 110, 110, 10); g.fillStyle = '#0d1320'; g.fill();
+  g.lineWidth = 1.5; g.strokeStyle = 'rgba(127,216,255,0.5)'; g.stroke();
+  g.shadowColor = '#38e1ff'; g.shadowBlur = 18;
+  g.fillStyle = '#5ff0ff'; g.font = font(60); g.textAlign = 'center'; g.textBaseline = 'middle';
+  g.fillText('AI', cx, cy - 4);
+  g.shadowBlur = 0;
+  g.fillStyle = '#9fb3d9'; g.font = font(12, 'normal'); g.fillText('NPU · 2026', cx, cy + 38);
+
+  // 5) 로봇 머리 (왼쪽)
+  g.strokeStyle = '#8b97ab'; g.lineWidth = 5;
+  g.beginPath(); g.moveTo(185, 172); g.lineTo(185, 118); g.stroke();
+  g.shadowColor = '#ff4d6d'; g.shadowBlur = 20;
+  g.fillStyle = '#ff4d6d'; g.beginPath(); g.arc(185, 110, 13, 0, TAU); g.fill();
+  g.shadowBlur = 0;
+  g.fillStyle = '#7d8aa0'; rrect(48, 230, 26, 70, 8); g.fill(); rrect(296, 230, 26, 70, 8); g.fill();
+  const head = g.createLinearGradient(0, 170, 0, 380);
+  head.addColorStop(0, '#f1f4f9'); head.addColorStop(1, '#93a0b5');
+  rrect(70, 170, 230, 205, 34); g.fillStyle = head; g.fill();
+  g.lineWidth = 3; g.strokeStyle = '#5c6b80'; g.stroke();
+  rrect(92, 205, 186, 82, 26); g.fillStyle = '#0b1220'; g.fill();
+  for (const ex of [140, 230]) {
+    g.shadowColor = '#38e1ff'; g.shadowBlur = 22;
+    g.fillStyle = '#38e1ff'; g.beginPath(); g.arc(ex, 246, 22, 0, TAU); g.fill();
+    g.shadowBlur = 0;
+    g.fillStyle = '#0b4a66'; g.beginPath(); g.arc(ex, 246, 10, 0, TAU); g.fill();
+    g.fillStyle = '#ffffff'; g.beginPath(); g.arc(ex - 7, 239, 5, 0, TAU); g.fill();
+  }
+  ['#36e27a', '#7be04a', '#c9e13a', '#f2c230', '#f58b2c'].forEach((col, i) => {
+    g.fillStyle = col; rrect(118 + i * 28, 312, 20, 26, 5); g.fill();
+  });
+  g.fillStyle = '#7d8aa0'; rrect(150, 375, 70, 26, 6); g.fill();
+  const body = g.createLinearGradient(0, 400, 0, 470);
+  body.addColorStop(0, '#aab6c9'); body.addColorStop(1, '#5d6a80');
+  rrect(80, 398, 210, 70, 26); g.fillStyle = body; g.fill();
+  g.fillStyle = '#38e1ff'; g.beginPath(); g.arc(185, 432, 9, 0, TAU); g.fill();
+
+  // 6) 제목 글자
+  g.textAlign = 'left'; g.textBaseline = 'alphabetic';
+  g.font = font(64); g.lineWidth = 8; g.strokeStyle = '#05070f';
+  g.strokeText('AI VISION LAB', 335, 452);
+  const tg = g.createLinearGradient(335, 400, 860, 452);
+  tg.addColorStop(0, '#ffffff'); tg.addColorStop(1, '#b9e9ff');
+  g.fillStyle = tg; g.fillText('AI VISION LAB', 335, 452);
+  g.font = font(22, 'normal'); g.fillStyle = '#c9d6ff';
+  g.fillText('이미지 필터 테스트 · OpenCV · Python', 338, 488);
+
+  // 7) 색상 스펙트럼 + 그레이 스텝 (왼쪽 아래)
+  const hue = g.createLinearGradient(40, 0, 460, 0);
+  for (let i = 0; i <= 6; i++) hue.addColorStop(i / 6, `hsl(${i * 60},100%,50%)`);
+  g.fillStyle = hue; g.fillRect(40, 540, 420, 30);
+  for (let i = 0; i < 16; i++) { const v = i * 17; g.fillStyle = `rgb(${v},${v},${v})`; g.fillRect(40 + i * 26.25, 576, 26.25, 30); }
+  g.strokeStyle = 'rgba(255,255,255,0.5)'; g.lineWidth = 1; g.strokeRect(40.5, 540.5, 420, 66);
+  g.fillStyle = 'rgba(220,230,255,0.8)'; g.font = font(12, 'normal');
+  g.fillText('COLOR / GRAY SCALE', 40, 530);
+
+  // 8) 노이즈 패치 (가운데 아래)
+  const nx = 520, ny = 530, nw = 220, nh = 90;
+  const ngr = g.createLinearGradient(nx, 0, nx + nw, 0);
+  ngr.addColorStop(0, '#3a4a6a'); ngr.addColorStop(1, '#c8d4ec');
+  g.fillStyle = ngr; g.fillRect(nx, ny, nw, nh);
+  g.fillStyle = '#ff6b9a'; g.beginPath(); g.arc(nx + 60, ny + 45, 26, 0, TAU); g.fill();
+  g.fillStyle = '#ffd34d'; g.fillRect(nx + 120, ny + 22, 60, 46);
+  const id = g.getImageData(nx, ny, nw, nh), d = id.data;
+  for (let i = 0; i < d.length; i += 4) {
+    const r = rnd();
+    if (r < 0.04) { d[i] = d[i + 1] = d[i + 2] = 0; continue; }       // 후추
+    if (r < 0.08) { d[i] = d[i + 1] = d[i + 2] = 255; continue; }     // 소금
+    const n = (rnd() + rnd() + rnd() - 1.5) * 50;                     // 가우시안 근사
+    d[i] = d[i] + n; d[i + 1] = d[i + 1] + n; d[i + 2] = d[i + 2] + n;
+  }
+  g.putImageData(id, nx, ny);
+  g.strokeStyle = 'rgba(255,255,255,0.5)'; g.strokeRect(nx + 0.5, ny + 0.5, nw, nh);
+  g.fillStyle = 'rgba(220,230,255,0.8)'; g.fillText('NOISE', nx, ny - 10);
+
+  // 9) QR 형태 블록 (오른쪽 아래)
+  const qx = 790, qy = 500, cell = 6, n = 21;
+  g.fillStyle = '#ffffff'; g.fillRect(qx - 8, qy - 8, n * cell + 16, n * cell + 16);
+  g.fillStyle = '#000000';
+  const finder = (fx, fy) => {
+    g.fillRect(qx + fx * cell, qy + fy * cell, 7 * cell, 7 * cell);
+    g.fillStyle = '#fff'; g.fillRect(qx + (fx + 1) * cell, qy + (fy + 1) * cell, 5 * cell, 5 * cell);
+    g.fillStyle = '#000'; g.fillRect(qx + (fx + 2) * cell, qy + (fy + 2) * cell, 3 * cell, 3 * cell);
+  };
+  for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) {
+    const inFinder = (x < 8 && y < 8) || (x > n - 9 && y < 8) || (x < 8 && y > n - 9);
+    if (!inFinder && rnd() < 0.5) g.fillRect(qx + x * cell, qy + y * cell, cell, cell);
+  }
+  finder(0, 0); finder(n - 7, 0); finder(0, n - 7);
+
+  // 10) 오른쪽 아래 그림자 (불균일 조명 → 적응형 이진화·CLAHE 비교용)
+  const shade = g.createRadialGradient(W, H, 40, W, H, 620);
+  shade.addColorStop(0, 'rgba(0,0,0,0.55)'); shade.addColorStop(1, 'rgba(0,0,0,0)');
+  g.fillStyle = shade; g.fillRect(0, 0, W, H);
+
   const blob = await c.convertToBlob({ type: 'image/png' });
   return new File([blob], 'sample.png', { type: 'image/png' });
 }
