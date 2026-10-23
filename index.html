@@ -162,7 +162,16 @@
   .catalog { grid-template-rows: auto 1fr; gap: 6px; }
   .catalog input[type=search] { border: 1px solid var(--border); border-radius: 4px; padding: 4px 8px; background: var(--panel); width: 100%; }
   #opList { overflow: auto; min-height: 0; border: 1px solid var(--border); border-radius: 4px; }
-  #opList .cat { font-size: 11px; font-weight: 700; color: var(--muted); padding: 8px 10px 2px; position: sticky; top: 0; background: var(--panel); }
+  /* 그룹 제목: 배경 띠 + 왼쪽 강조선으로 항목과 확실히 구분, 스크롤해도 위에 고정 */
+  #opList .cat {
+    position: sticky; top: 0; z-index: 1;
+    font-size: 12.5px; font-weight: 700; color: var(--accent); letter-spacing: .02em;
+    padding: 6px 10px 6px 9px; margin-top: 6px;
+    background: var(--head); border-left: 3px solid var(--accent);
+    border-top: 1px solid var(--border-soft); border-bottom: 1px solid var(--border-soft);
+  }
+  #opList .cat:first-child { margin-top: 0; border-top: 0; }
+  #opList button > span:first-child { font-weight: 400; }
   #opList button {
     display: grid; grid-template-columns: 1fr auto; width: 100%; text-align: left; border: 0; border-radius: 0;
     padding: 4px 10px; background: transparent; white-space: normal;
