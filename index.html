@@ -129,6 +129,21 @@
   #curImgName { flex: 1 1 60px; text-align: right; min-width: 0; overflow: hidden; text-overflow: ellipsis; font-size: 12px; }
   .preview-head button { margin-left: auto; }
   .preview-head button { padding: 1px 8px; font-size: 12px; }
+
+  /* 이미지 칸 제목: 이미지 상자와 같은 너비의 머리띠 (원본 = 회색, 결과 = 강조색) */
+  .pv > .preview-head {
+    flex-wrap: nowrap; overflow: hidden;
+    margin: 0; padding: 5px 10px; min-height: 34px;
+    background: var(--head); border: 1px solid var(--border); border-bottom: 0; border-radius: 6px 6px 0 0;
+  }
+  .pv > .preview-head > span:not(:first-child) { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .pv > .preview-head > button { flex-shrink: 0; }
+  .pv > .preview-head > span:first-child { flex-shrink: 0; font-size: 14px; font-weight: 700; color: var(--text); letter-spacing: .02em; }
+  .pv > .preview-head > span:first-child::before { content: ''; display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 7px; vertical-align: 1px; background: var(--muted); }
+  .pv:last-child > .preview-head { background: var(--accent); border-color: var(--accent); }
+  .pv:last-child > .preview-head > span { color: #fff !important; }
+  .pv:last-child > .preview-head > span:first-child::before { background: #fff; }
+  .pv > .view { border-radius: 0 0 6px 6px; }
   dialog.scen { width: min(1100px, calc(100vw - 32px)); height: min(560px, calc(100vh - 48px)); padding: 12px 16px 16px; }
   dialog.scen[open] { display: grid; grid-template-rows: auto auto 1fr; gap: 8px; }
   .scen-title { display: flex; align-items: center; justify-content: space-between; }
