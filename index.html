@@ -230,6 +230,24 @@
   #histStats td { padding: 2px 6px; font-size: 12px; }
   #histStats td:first-child { color: var(--muted); }
 
+  /* 이미지 가져오기: 방법 선택 / 카메라 촬영 */
+  dialog.src-dlg { width: min(460px, calc(100vw - 32px)); }
+  .src-choices { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .src-choice { display: grid; justify-items: center; gap: 4px; padding: 20px 10px 16px; border-radius: 8px; white-space: normal; }
+  .src-choice:hover { background: var(--row-hover); }
+  .src-choice .ico { font-size: 36px; line-height: 1.1; }
+  .src-choice b { font-size: 14px; }
+  .src-choice small { color: var(--muted); font-size: 12px; }
+  dialog.cam-dlg { width: min(880px, calc(100vw - 32px)); padding: 12px 16px 16px; }
+  dialog.cam-dlg[open] { display: grid; gap: 10px; }
+  .cam-view { position: relative; background: #000; border-radius: 6px; aspect-ratio: 16 / 9; overflow: hidden; }
+  .cam-view video { width: 100%; height: 100%; object-fit: contain; display: block; }
+  .cam-view .cam-msg { position: absolute; inset: 0; display: grid; place-items: center; color: #d6d9df; text-align: center; padding: 16px; white-space: pre-line; }
+  .cam-view .cam-msg[hidden] { display: none; }
+  .cam-bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .cam-bar select { border: 1px solid var(--border); border-radius: 4px; padding: 3px 6px; background: var(--panel); color: var(--text); font: inherit; max-width: 320px; }
+  .cam-bar .spacer { flex: 1; }
+
   dialog.code-dlg { width: min(860px, calc(100vw - 32px)); height: min(640px, calc(100vh - 48px)); padding: 12px 16px 16px; }
   dialog.code-dlg[open] { display: grid; grid-template-rows: auto 1fr auto; gap: 8px; }
   dialog.code-dlg .dlg-btns { margin-top: 0; }
@@ -428,6 +446,36 @@
     <button id="btnCodeToExpert" class="primary" title="필터 테스트 탭의 코드 편집기에 넣고 실행합니다">필터 테스트 탭에서 열기</button>
   </div>
 </dialog>
+
+<dialog id="imgSrcDlg" class="src-dlg" aria-labelledby="imgSrcTitle">
+  <div class="scen-title">
+    <h3 id="imgSrcTitle">이미지 가져오기</h3>
+    <button id="btnSrcClose" aria-label="닫기">✕</button>
+  </div>
+  <div class="src-choices">
+    <button id="btnSrcCamera" class="src-choice"><span class="ico" aria-hidden="true">📷</span><b>1) 사진 찍기</b><small>카메라로 바로 촬영</small></button>
+    <button id="btnSrcFile" class="src-choice"><span class="ico" aria-hidden="true">🖼️</span><b>2) 내 PC에서 선택</b><small>이미지 파일 열기</small></button>
+  </div>
+  <p class="muted" style="margin:12px 0 0;font-size:12px">이미지 파일을 창에 끌어다 놓아도 바로 열립니다.</p>
+</dialog>
+
+<dialog id="camDlg" class="cam-dlg" aria-labelledby="camTitle">
+  <div class="scen-title">
+    <h3 id="camTitle">사진 찍기</h3>
+    <button id="btnCamClose" aria-label="닫기">✕</button>
+  </div>
+  <div class="cam-view">
+    <video id="camVideo" autoplay playsinline muted></video>
+    <div id="camMsg" class="cam-msg">카메라 연결 중…</div>
+  </div>
+  <div class="cam-bar">
+    <select id="camSelect" aria-label="카메라 선택" hidden></select>
+    <button id="btnCamToFile">내 PC에서 선택</button>
+    <span class="spacer"></span>
+    <button id="btnCamShot" class="primary" disabled title="Space / Enter">📸 촬영</button>
+  </div>
+</dialog>
+<input type="file" id="camInput" accept="image/*" capture="environment" hidden>
 
 <dialog id="msgDlg">
   <h3 id="msgTitle"></h3>
@@ -1689,7 +1737,86 @@ async function runSnippetOnce() {
   }
 }
 $('btnRun').onclick = runSnippet;
-$('btnChangeImg').onclick = () => $('fileInput').click(); // 바뀐 이미지로 선택된 코드를 다시 실행 (setCurrentImage)
+$('btnChangeImg').onclick = () => chooseImageSource(); // 바뀐 이미지로 선택된 코드를 다시 실행 (setCurrentImage)
+
+// ═══════════════════════ 이미지 가져오기: 1) 사진 찍기  2) 내 PC에서 선택 ═══════════════════════
+const imgSrcDlg = $('imgSrcDlg'), camDlg = $('camDlg'), camVideo = $('camVideo');
+let camStream = null;
+
+function chooseImageSource() { imgSrcDlg.showModal(); $('btnSrcCamera').focus(); }
+$('btnSrcClose').onclick = () => imgSrcDlg.close();
+$('btnSrcFile').onclick = () => { imgSrcDlg.close(); $('fileInput').click(); };
+$('btnSrcCamera').onclick = () => { imgSrcDlg.close(); openCamera(); };
+
+function setCamMsg(text) { const m = $('camMsg'); m.textContent = text; m.hidden = !text; }
+function stopCamera() {
+  camStream?.getTracks().forEach(t => t.stop());
+  camStream = null;
+  camVideo.srcObject = null;
+  $('btnCamShot').disabled = true;
+}
+
+async function openCamera(deviceId) {
+  // 카메라 API가 없는 환경 → 휴대폰이면 카메라 앱, PC면 파일 선택이 열림
+  if (!navigator.mediaDevices?.getUserMedia) { $('camInput').click(); return; }
+  if (!camDlg.open) camDlg.showModal();
+  stopCamera();
+  setCamMsg('카메라 연결 중…\n(브라우저가 카메라 사용 권한을 물으면 “허용”을 눌러 주세요)');
+  try {
+    camStream = await navigator.mediaDevices.getUserMedia({
+      audio: false,
+      video: deviceId ? { deviceId: { exact: deviceId } }
+                      : { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } },
+    });
+    if (!camDlg.open) { stopCamera(); return; } // 연결 중에 창을 닫은 경우
+    camVideo.srcObject = camStream;
+    await camVideo.play();
+    setCamMsg('');
+    $('btnCamShot').disabled = false;
+    $('btnCamShot').focus();
+    // 카메라가 여러 대면 선택 상자 표시 (권한을 받은 뒤에야 이름이 보임)
+    const cams = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === 'videoinput');
+    const sel = $('camSelect'), cur = camStream.getVideoTracks()[0]?.getSettings().deviceId;
+    sel.hidden = cams.length < 2;
+    sel.innerHTML = cams.map((d, i) => `<option value="${esc(d.deviceId)}"${d.deviceId === cur ? ' selected' : ''}>${esc(d.label || `카메라 ${i + 1}`)}</option>`).join('');
+  } catch (e) {
+    console.error(e);
+    stopCamera();
+    setCamMsg(
+      e.name === 'NotAllowedError' ? '카메라 사용 권한이 거부되었습니다.\n주소창 왼쪽(또는 오른쪽)의 카메라 아이콘에서 “허용”으로 바꾼 뒤 다시 시도해 주세요.' :
+      e.name === 'NotFoundError' || e.name === 'OverconstrainedError' ? '연결된 카메라를 찾을 수 없습니다.\n“내 PC에서 선택”으로 이미지를 열 수 있습니다.' :
+      e.name === 'NotReadableError' ? '다른 프로그램이 카메라를 사용 중입니다.\n그 프로그램을 닫고 다시 시도해 주세요.' :
+      '카메라를 열 수 없습니다.\n' + (e.message || e.name));
+  }
+}
+
+async function takePhoto() {
+  if (!camStream || !camVideo.videoWidth) return;
+  const c = document.createElement('canvas');
+  c.width = camVideo.videoWidth; c.height = camVideo.videoHeight;
+  c.getContext('2d').drawImage(camVideo, 0, 0);
+  const blob = await new Promise(r => c.toBlob(r, 'image/png'));
+  const t = new Date(), p = n => String(n).padStart(2, '0');
+  const name = `camera_${t.getFullYear()}${p(t.getMonth() + 1)}${p(t.getDate())}_${p(t.getHours())}${p(t.getMinutes())}${p(t.getSeconds())}.png`;
+  camDlg.close();
+  useImageFile(new File([blob], name, { type: 'image/png' }));
+}
+
+$('btnCamShot').onclick = takePhoto;
+$('btnCamClose').onclick = () => camDlg.close();
+$('btnCamToFile').onclick = () => { camDlg.close(); $('fileInput').click(); };
+$('camSelect').onchange = e => openCamera(e.target.value);
+camDlg.addEventListener('close', stopCamera); // Esc로 닫아도 카메라 끄기
+camDlg.addEventListener('keydown', e => {
+  if ((e.key === ' ' || e.key === 'Enter') && !$('btnCamShot').disabled && e.target.tagName !== 'SELECT') { e.preventDefault(); takePhoto(); }
+});
+$('camInput').onchange = e => { useImageFile(e.target.files[0]); e.target.value = ''; };
+for (const dlg of [imgSrcDlg, camDlg]) // 바깥 클릭으로 닫기
+  dlg.addEventListener('click', e => {
+    if (e.target !== dlg) return;
+    const r = dlg.getBoundingClientRect();
+    if (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) dlg.close();
+  });
 
 // 이미지를 고르기 전에는 기본 샘플을 원본 비교 칸에 표시
 // 이미지를 고르기 전에는 기본 샘플(/data/sample.png)을 두 탭의 원본으로 사용
@@ -2100,7 +2227,7 @@ function basicSetSource(bitmap) {
   scheduleChainRun(0);
 }
 
-$('btnBasicImg').onclick = () => $('fileInput').click();
+$('btnBasicImg').onclick = () => chooseImageSource();
 
 $('btnBasicSave').onclick = async () => {
   const btn = $('btnBasicSave');
